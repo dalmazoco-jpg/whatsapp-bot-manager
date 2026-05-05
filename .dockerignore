@@ -1,0 +1,8 @@
+node_modules
+.git
+*.log
+local.db
+.env
+.env.local
+.env.development
+sessions/

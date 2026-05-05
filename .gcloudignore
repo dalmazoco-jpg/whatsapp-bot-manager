@@ -1,0 +1,10 @@
+.gcloudignore
+.git
+.gitignore
+node_modules
+dist
+.manus-logs
+local.db*
+sessions
+*.log
+.DS_Store

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1777601487064,
+      "tag": "0000_nosy_night_nurse",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1777601607696,
+      "tag": "0001_cooing_nekra",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777818955918,
+      "tag": "0002_useful_crystal",
+      "breakpoints": true
+    }
+  ]
+}

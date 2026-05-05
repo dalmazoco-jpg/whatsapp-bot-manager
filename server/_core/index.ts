@@ -95,19 +95,13 @@ async function startServer() {
     serveStatic(app);
   }
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+const port = Number(process.env.PORT) || 3000;
 
-  if (port !== preferredPort) {
-    console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
-  }
-
-  server.listen(port, () => {
-    console.log(`\n🚀 Server running on http://localhost:${port}/`);
-    console.log(`📡 WhatsApp SSE: http://localhost:${port}/api/whatsapp/qr-stream/:empresaId`);
-    console.log(`🔐 Auth: http://localhost:${port}/api/auth/login`);
-    console.log("");
-  });
+server.listen(port, "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${port}`);
+  console.log(`📡 WhatsApp SSE: /api/whatsapp/qr-stream/:empresaId`);
+  console.log(`🔐 Auth: /api/auth/login`);
+});
 
   // Restaurar sessões Baileys ativas
   setTimeout(() => {

@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { getPublicApresentacaoDataBySlug } from "../db";
 
 export function registerApresentacaoRoutes(app: Express) {
-  app.get("/public/:slug", async (req: Request, res: Response) => {
+  app.get("/api/public/apresentacao/:slug", async (req: Request, res: Response) => {
     const slug = String(req.params.slug || "").trim();
     if (!slug) {
       return res.status(400).json({ error: "Slug inválido" });

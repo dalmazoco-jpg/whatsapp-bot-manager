@@ -24,6 +24,7 @@ function Router() {
   const [location] = useLocation();
   const isPublicRoute = location.startsWith("/public/");
   const { data: me, isLoading, refetch } = trpc.auth.me.useQuery(undefined, {
+    enabled: !isPublicRoute,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -46,7 +47,7 @@ function Router() {
     );
   }
 
-  if (!me && !isPublicRoute) {
+  if ((!me || forceLogin) && !isPublicRoute) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 

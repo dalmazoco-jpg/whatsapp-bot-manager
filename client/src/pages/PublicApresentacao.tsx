@@ -27,7 +27,7 @@ export default function PublicApresentacao() {
   useEffect(() => {
     if (!slug) return;
     setLoading(true);
-    fetch(`/public/${slug}`)
+    fetch(`/api/public/apresentacao/${slug}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Não encontrado");
         return res.json();

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { protectedProcedure, adminProcedure, empresaProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, adminProcedure, empresaProcedure, router } from "./_core/trpc";
 import { generateDelegatedToken } from "./auth";
 import { notificarEntregador, notificarContatos, templateEntregaSaindo } from "./services/notificacoes.service";
 import {
@@ -13,16 +13,20 @@ import {
   getAgendamentosByEmpresaId,
   getAgendamentoById,
   getCardapioByEmpresaId,
+  getApresentacaoConfigByEmpresaId,
+  getPublicApresentacaoDataBySlug,
   getHorariosByEmpresaId,
   getMensagensByClienteId,
   getMensagensByEmpresaId,
   getNotificacoesByEmpresaId,
   getSessaoByEmpresaId,
+  upsertApresentacaoConfig,
 } from "./db";
 import {
   empresas,
   usuarios,
   cardapioItens,
+  apresentacaoConfig,
   horariosAtendimento,
   clientesWhatsapp,
   pedidos,
@@ -32,6 +36,7 @@ import {
   notificacoes,
   type InsertEmpresa,
   type InsertCardapioItem,
+  type InsertApresentacaoConfig,
   type InsertHorarioAtendimento,
 } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -411,6 +416,110 @@ export const cardapioRouter = router({
 });
 
 // ============================================================
+// APRESENTAÇÃO COMERCIAL
+// ============================================================
+const normalizeSlug = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 40) || "empresa";
+
+const buildUniqueSlug = async (base: string) => {
+  let slug = normalizeSlug(base);
+  let counter = 1;
+  let exists = await getApresentacaoConfigBySlug(slug);
+  while (exists) {
+    slug = `${normalizeSlug(base)}-${counter}`.slice(0, 60);
+    exists = await getApresentacaoConfigBySlug(slug);
+    counter += 1;
+  }
+  return slug;
+};
+
+export const apresentacaoRouter = router({
+  getConfig: empresaProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role === "admin" && !ctx.empresaId) return null;
+    return getApresentacaoConfigByEmpresaId(ctx.empresaId!);
+  }),
+
+  updateConfig: empresaProcedure
+    .input(
+      z.object({
+        nomeEmpresa: z.string().min(1),
+        descricao: z.string().optional(),
+        logoUrl: z.string().optional(),
+        corPrimaria: z.string().min(3).optional(),
+        whatsapp: z.string().optional(),
+        endereco: z.string().optional(),
+        instagram: z.string().optional(),
+        ativo: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const empresaId = ctx.empresaId!;
+      const existing = await getApresentacaoConfigByEmpresaId(empresaId);
+      const values: InsertApresentacaoConfig = {
+        empresaId,
+        slug: existing?.slug || normalizeSlug(input.nomeEmpresa),
+        nomeEmpresa: input.nomeEmpresa,
+        descricao: input.descricao || "",
+        logoUrl: input.logoUrl || "",
+        corPrimaria: input.corPrimaria || "#10b981",
+        whatsapp: input.whatsapp || "",
+        endereco: input.endereco || "",
+        instagram: input.instagram || "",
+        ativo: input.ativo ?? true,
+        createdAt: existing?.createdAt || new Date(),
+        updatedAt: new Date(),
+      };
+
+      if (!existing) {
+        values.slug = await buildUniqueSlug(input.nomeEmpresa);
+      }
+
+      return upsertApresentacaoConfig(values as InsertApresentacaoConfig);
+    }),
+
+  gerarLinkPublico: empresaProcedure.mutation(async ({ ctx }) => {
+    const empresaId = ctx.empresaId!;
+    const existing = await getApresentacaoConfigByEmpresaId(empresaId);
+    if (existing?.slug) {
+      return { slug: existing.slug };
+    }
+
+    const empresa = await getEmpresaById(empresaId);
+    const base = empresa?.nome || "empresa";
+    const slug = await buildUniqueSlug(base);
+
+    const config: InsertApresentacaoConfig = {
+      empresaId,
+      slug,
+      nomeEmpresa: existing?.nomeEmpresa || empresa?.nome || "Minha Empresa",
+      descricao: existing?.descricao || "",
+      logoUrl: existing?.logoUrl || "",
+      corPrimaria: existing?.corPrimaria || "#10b981",
+      whatsapp: existing?.whatsapp || empresa?.whatsappNumero || "",
+      endereco: existing?.endereco || "",
+      instagram: existing?.instagram || "",
+      ativo: existing?.ativo ?? true,
+      createdAt: existing?.createdAt || new Date(),
+      updatedAt: new Date(),
+    };
+
+    return upsertApresentacaoConfig(config as InsertApresentacaoConfig);
+  }),
+
+  getPublicData: publicProcedure
+    .input(z.object({ slug: z.string() }))
+    .query(async ({ input }) => {
+      return getPublicApresentacaoDataBySlug(input.slug);
+    }),
+});
+
+// ============================================================
 // HORÁRIOS DE ATENDIMENTO
 // ============================================================
 export const horariosRouter = router({
@@ -571,4 +680,3 @@ export const importRouter = router({
       return { success: true, count: items.length };
     }),
 });
-

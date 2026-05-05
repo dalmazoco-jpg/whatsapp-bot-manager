@@ -3,10 +3,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
   users, usuarios, empresas, sessoesWhatsapp, clientesWhatsapp,
-  pedidos, agendamentos, cardapioItens, horariosAtendimento,
+  pedidos, agendamentos, cardapioItens, apresentacaoConfig, horariosAtendimento,
   mensagensLog, notificacoes,
 } from "../drizzle/schema";
-import type { InsertUser, InsertUsuario } from "../drizzle/schema";
+import type { InsertUser, InsertUsuario, InsertApresentacaoConfig } from "../drizzle/schema";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error("DATABASE_URL não configurada!");
@@ -102,6 +102,62 @@ export const getAgendamentosByUserId = getAgendamentosByEmpresaId;
 // ── cardapio ─────────────────────────────────────────────────
 export async function getCardapioByEmpresaId(empresaId: number) {
   return db.select().from(cardapioItens).where(eq(cardapioItens.empresaId, empresaId));
+}
+
+export async function getCardapioDisponivelByEmpresaId(empresaId: number) {
+  return db.select().from(cardapioItens).where(and(eq(cardapioItens.empresaId, empresaId), eq(cardapioItens.disponivel, true))).orderBy(cardapioItens.categoria, cardapioItens.nome);
+}
+
+// ── apresentação comercial ───────────────────────────────────────
+export async function getApresentacaoConfigByEmpresaId(empresaId: number) {
+  const r = await db.select().from(apresentacaoConfig).where(eq(apresentacaoConfig.empresaId, empresaId)).limit(1);
+  return r[0];
+}
+
+export async function getApresentacaoConfigBySlug(slug: string) {
+  const r = await db.select().from(apresentacaoConfig).where(eq(apresentacaoConfig.slug, slug)).limit(1);
+  return r[0];
+}
+
+export async function upsertApresentacaoConfig(input: InsertApresentacaoConfig) {
+  const existing = await db.select().from(apresentacaoConfig).where(eq(apresentacaoConfig.empresaId, input.empresaId)).limit(1);
+  if (existing.length > 0) {
+    await db.update(apresentacaoConfig).set({
+      ...input,
+      updatedAt: new Date(),
+    }).where(eq(apresentacaoConfig.empresaId, input.empresaId));
+    const updated = await getApresentacaoConfigByEmpresaId(input.empresaId);
+    return updated;
+  }
+  const [created] = await db.insert(apresentacaoConfig).values(input).returning();
+  return created;
+}
+
+export async function getPublicApresentacaoDataBySlug(slug: string) {
+  const config = await getApresentacaoConfigBySlug(slug);
+  if (!config) return null;
+
+  const empresa = await getEmpresaById(config.empresaId);
+  const itens = await getCardapioDisponivelByEmpresaId(config.empresaId);
+  const categorias = [...new Set(itens.map((item) => item.categoria || "Geral"))];
+
+  return {
+    empresa: empresa ? {
+      id: empresa.id,
+      nome: empresa.nome,
+      tipo: empresa.tipo,
+      ramo: empresa.ramo,
+      whatsappNumero: empresa.whatsappNumero,
+    } : null,
+    config,
+    itens,
+    categorias,
+    links: {
+      whatsapp: config.whatsapp,
+      instagram: config.instagram,
+      site: `/public/${slug}`,
+    },
+  };
 }
 
 // ── horarios ─────────────────────────────────────────────────

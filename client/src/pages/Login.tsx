@@ -3,6 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageSquare, Lock, Mail, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -13,6 +21,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [senha, setSenha] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +56,34 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       setError("Erro de conexão. Tente novamente.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    setForgotMessage("");
+
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setForgotMessage(data.error || "Erro ao enviar solicitação");
+        return;
+      }
+
+      setForgotMessage("Instruções enviadas para seu email!");
+      setForgotEmail("");
+    } catch (err) {
+      setForgotMessage("Erro de conexão. Tente novamente.");
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -124,6 +164,16 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </Button>
           </form>
 
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => setForgotOpen(true)}
+              className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              Esqueceu a senha?
+            </button>
+          </div>
+
           <div className="mt-6 pt-4 border-t border-slate-700 text-center">
             <p className="text-xs text-slate-500">
               Admin padrão: admin@sistema.com / admin123
@@ -131,6 +181,64 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700">
+          <DialogHeader>
+            <DialogTitle className="text-white">Esqueceu a senha?</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Digite seu email para receber instruções de redefinição de senha.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleForgotPassword}>
+            <div className="space-y-4 py-4">
+              {forgotMessage && (
+                <div className={`p-3 rounded-lg text-sm text-center ${
+                  forgotMessage.includes("Erro") 
+                    ? "bg-red-500/10 border border-red-500/20 text-red-400"
+                    : "bg-green-500/10 border border-green-500/20 text-green-400"
+                }`}>
+                  {forgotMessage}
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                  <Input
+                    type="email"
+                    placeholder="seu@email.com"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="pl-10 bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setForgotOpen(false)}
+                className="border-slate-600 text-slate-300 hover:bg-slate-700"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="bg-emerald-500 hover:bg-emerald-600 text-white"
+                disabled={forgotLoading}
+              >
+                {forgotLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : null}
+                {forgotLoading ? "Enviando..." : "Enviar"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Login from "./pages/Login";
@@ -15,10 +15,14 @@ import ConexaoWhatsApp from "./pages/ConexaoWhatsApp";
 import Cardapio from "./pages/Cardapio";
 import Financeiro from "./pages/Financeiro";
 import AdminClienteConexao from "./pages/AdminClienteConexao";
+import Apresentacao from "./pages/Apresentacao";
+import PublicApresentacao from "./pages/PublicApresentacao";
 import { trpc } from "./lib/trpc";
 import { useState, useCallback } from "react";
 
 function Router() {
+  const [location] = useLocation();
+  const isPublicRoute = location.startsWith("/public/");
   const { data: me, isLoading, refetch } = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
@@ -42,12 +46,11 @@ function Router() {
     );
   }
 
-  // Se não está autenticado, mostra login
-  if (!me || forceLogin) {
+  if (!me && !isPublicRoute) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const isAdmin = me.role === "admin";
+  const isAdmin = me?.role === "admin";
 
   return (
     <Switch>
@@ -62,6 +65,8 @@ function Router() {
       {/* Empresa pages */}
       <Route path="/whatsapp" component={ConexaoWhatsApp} />
       <Route path="/cardapio" component={Cardapio} />
+      <Route path="/dashboard/apresentacao" component={Apresentacao} />
+      <Route path="/public/:slug" component={PublicApresentacao} />
       <Route path="/clientes" component={Clientes} />
       <Route path="/pedidos" component={Pedidos} />
       <Route path="/agendamentos" component={Agendamentos} />

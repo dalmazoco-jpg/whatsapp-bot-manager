@@ -95,6 +95,7 @@ export default function DashboardLayout({
     ...(isAdmin ? [{ icon: Shield, label: "Admin", path: "/admin" }] : []),
     { icon: Smartphone, label: "WhatsApp", path: "/whatsapp" },
     { icon: currentLabels.icon, label: currentLabels.cardapio, path: "/cardapio" },
+    { icon: Package, label: "Apresentação", path: "/dashboard/apresentacao" },
     { icon: Users, label: "Clientes", path: "/clientes" },
     { icon: ShoppingBag, label: "Pedidos", path: "/pedidos" },
     { icon: Calendar, label: "Agendamentos", path: "/agendamentos" },

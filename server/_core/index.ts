@@ -9,8 +9,9 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { handleLogin, handleRegister, handleLogout, handleMe } from "../auth";
+import { handleLogin, handleRegister, handleLogout, handleMe, handleForgotPassword } from "../auth";
 import { registerWhatsAppRoutes } from "../routes/whatsapp.sse";
+import { registerApresentacaoRoutes } from "../routes/apresentacao.routes";
 import { registerGoogleCalendarRoutes } from "../routes/google-calendar.routes";
 import { restoreActiveSessions } from "../services/baileys.service";
 
@@ -54,6 +55,7 @@ async function startServer() {
   app.post("/api/auth/register", handleRegister);
   app.post("/api/auth/logout", handleLogout);
   app.get("/api/auth/me", handleMe);
+  app.post("/api/auth/forgot-password", handleForgotPassword);
   // Dev helper: gerar token admin local (development only)
   if (process.env.NODE_ENV === "development") {
     const { handleDevLogin } = await import("../auth");
@@ -64,6 +66,7 @@ async function startServer() {
   // WhatsApp SSE + REST routes
   // ============================================================
   registerWhatsAppRoutes(app);
+  registerApresentacaoRoutes(app);
   registerGoogleCalendarRoutes(app);
 
   // ============================================================

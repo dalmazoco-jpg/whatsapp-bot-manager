@@ -111,6 +111,24 @@ export const cardapioItens = pgTable("cardapio_itens", {
 export type CardapioItem = typeof cardapioItens.$inferSelect;
 export type InsertCardapioItem = typeof cardapioItens.$inferInsert;
 
+export const apresentacaoConfig = pgTable("apresentacao_config", {
+  id: serial("id").primaryKey(),
+  empresaId: integer("empresa_id").notNull().references(() => empresas.id, { onDelete: "cascade" }).unique(),
+  slug: text("slug").notNull().unique(),
+  nomeEmpresa: text("nome_empresa").notNull().default("Minha Empresa"),
+  descricao: text("descricao"),
+  logoUrl: text("logo_url"),
+  corPrimaria: text("cor_primaria").notNull().default("#10b981"),
+  whatsapp: text("whatsapp"),
+  endereco: text("endereco"),
+  instagram: text("instagram"),
+  ativo: boolean("ativo").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ApresentacaoConfig = typeof apresentacaoConfig.$inferSelect;
+export type InsertApresentacaoConfig = typeof apresentacaoConfig.$inferInsert;
+
 export const horariosAtendimento = pgTable("horarios_atendimento", {
   id: serial("id").primaryKey(),
   empresaId: integer("empresa_id").notNull().references(() => empresas.id, { onDelete: "cascade" }),
@@ -169,4 +187,3 @@ export const contatosNotificacao = pgTable("contatos_notificacao", {
 });
 export type ContatoNotificacao = typeof contatosNotificacao.$inferSelect;
 export type InsertContatoNotificacao = typeof contatosNotificacao.$inferInsert;
-

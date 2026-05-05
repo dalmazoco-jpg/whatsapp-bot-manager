@@ -220,3 +220,35 @@ export async function handleDevLogin(_req: Request, res: Response) {
     return res.status(500).json({ error: "Internal error" });
   }
 }
+
+/**
+ * POST /api/auth/forgot-password
+ * Body: { email }
+ * Envia instruções de redefinição de senha
+ */
+export async function handleForgotPassword(req: Request, res: Response) {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email é obrigatório" });
+    }
+
+    const usuario = await getUsuarioByEmail(email);
+    if (!usuario) {
+      // Não revelar se o email existe ou não por segurança
+      return res.json({ message: "Se o email estiver cadastrado, instruções foram enviadas" });
+    }
+
+    // TODO: Implementar envio de email com token de redefinição
+    // Por enquanto, apenas log
+    console.log(`[Forgot Password] Solicitação para ${email} - usuário ID: ${usuario.id}`);
+
+    // Em produção, gerar token, salvar no banco, enviar email
+    // Aqui apenas simula sucesso
+    return res.json({ message: "Instruções enviadas para seu email!" });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    return res.status(500).json({ error: "Erro interno do servidor" });
+  }
+}

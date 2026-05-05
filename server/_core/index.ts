@@ -14,6 +14,7 @@ import { registerWhatsAppRoutes } from "../routes/whatsapp.sse";
 import { registerApresentacaoRoutes } from "../routes/apresentacao.routes";
 import { registerGoogleCalendarRoutes } from "../routes/google-calendar.routes";
 import { restoreActiveSessions } from "../services/baileys.service";
+import { ensureApresentacaoConfigTable } from "../db";
 
 
 
@@ -39,6 +40,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  await ensureApresentacaoConfigTable();
 
   // Middleware base
   app.use(express.json({ limit: "50mb" }));
@@ -115,5 +117,4 @@ server.listen(port, "0.0.0.0", () => {
 }
 
 startServer().catch(console.error);
-
 

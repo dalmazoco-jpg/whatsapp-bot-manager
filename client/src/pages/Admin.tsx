@@ -26,28 +26,32 @@ export default function Admin() {
   const [, setLocation] = useLocation();
   const [loadingEmpresaId, setLoadingEmpresaId] = useState<number | null>(null);
 
-  const handleAcessarEmpresa = async (empresaId: number) => {
-    setLoadingEmpresaId(empresaId);
-    try {
-      const result = await acessarEmpresa.mutateAsync({ empresaId });
-      localStorage.setItem("auth_token", result.token);
-      setLocation("/dashboard");
-    } catch (err) {
-      console.error("Erro ao acessar empresa:", err);
-      setLoadingEmpresaId(null);
+const handleAcessarEmpresa = async (empresaId: number) => {
+  setLoadingEmpresaId(empresaId);
+
+  try {
+    const result = await acessarEmpresa.mutateAsync({ empresaId });
+
+    if (!result?.token) {
+      console.error("Token não retornado");
+      return;
     }
-  };
 
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    nome: "",
-    tipo: "pizzaria" as "pizzaria" | "adega" | "consultorio" | "loja" | "outro",
-    whatsappNumero: "",
-    emailUsuario: "",
-    senhaUsuario: "",
-    nomeUsuario: "",
-  });
+    // salva no localStorage
+    localStorage.setItem("auth_token", result.token);
 
+    // 🔴 ESSA LINHA É O QUE FALTAVA
+    document.cookie = `app_session_token=${result.token}; path=/; SameSite=Lax`;
+
+    // redireciona FORÇANDO reload
+    window.location.href = "/dashboard";
+
+  } catch (err) {
+    console.error("Erro ao acessar empresa:", err);
+  } finally {
+    setLoadingEmpresaId(null);
+  }
+};
   const handleCreate = async () => {
     if (!form.nome || !form.emailUsuario || !form.senhaUsuario || !form.nomeUsuario) return;
     await criarEmpresa.mutateAsync(form);

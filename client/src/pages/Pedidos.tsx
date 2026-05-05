@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
-import { Search, Package, ShoppingBag, Clock, CheckCircle2, DollarSign } from "lucide-react";
+import { Search, Package, ShoppingBag, Clock, CheckCircle2, DollarSign, Truck, Bell } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -20,6 +20,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 export default function Pedidos() {
   const { data: pedidos, isLoading, refetch } = trpc.pedidos.list.useQuery();
   const updateStatus = trpc.pedidos.updateStatus.useMutation({ onSuccess: () => refetch() });
+  const chamarEntregador = trpc.pedidos.chamarEntregador.useMutation();
+  const [chamandoEntregador, setChamandoEntregador] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
 
@@ -184,8 +186,25 @@ export default function Pedidos() {
                             onClick={() => updateStatus.mutate({ id: pedido.id, status: "em_preparo" })}>Preparar</Button>
                         )}
                         {pedido.status === "em_preparo" && (
-                          <Button size="sm" className="bg-purple-600 text-white hover:bg-purple-700"
-                            onClick={() => updateStatus.mutate({ id: pedido.id, status: "saiu_entrega" })}>Saiu Entrega</Button>
+                          <Button size="sm" className="bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-1"
+                            onClick={() => updateStatus.mutate({ id: pedido.id, status: "saiu_entrega" })}>
+                            <Truck className="w-3.5 h-3.5" />
+                            Saiu p/ Entrega
+                          </Button>
+                        )}
+                        {pedido.status === "em_preparo" && (
+                          <Button size="sm" variant="outline" 
+                            className={`border-purple-400 text-purple-600 hover:bg-purple-50 flex items-center gap-1 text-xs ${chamandoEntregador === pedido.id ? "opacity-60" : ""}`}
+                            disabled={chamandoEntregador === pedido.id}
+                            onClick={async () => {
+                              setChamandoEntregador(pedido.id);
+                              await chamarEntregador.mutateAsync({ pedidoId: pedido.id });
+                              setChamandoEntregador(null);
+                            }}
+                            title="Envia mensagem WhatsApp ao entregador cadastrado">
+                            <Bell className="w-3 h-3" />
+                            {chamandoEntregador === pedido.id ? "Enviando..." : "Avisar Entregador"}
+                          </Button>
                         )}
                         {pedido.status === "saiu_entrega" && (
                           <Button size="sm" className="bg-green-600 text-white hover:bg-green-700"

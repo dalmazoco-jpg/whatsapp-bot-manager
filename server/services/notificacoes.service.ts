@@ -122,10 +122,44 @@ export function templateNovoCliente(dados: {
   return `🆕 *Novo Cliente!*\n\n👤 ${dados.clienteNome}\n📱 WhatsApp: +55 ${numero}\n\n_Primeiro contato pelo bot_`;
 }
 
+
+
+// ── Notifica especificamente o entregador ─────────────────────
+export async function notificarEntregador(empresaId: number, mensagem: string): Promise<void> {
+  const db = getDb();
+  const rows = await db.execute(`
+    SELECT id, nome, whatsapp, tipo, eventos
+    FROM contatos_notificacao
+    WHERE empresa_id = ${empresaId}
+    AND ativo = true
+    AND tipo = 'entregador'
+  `) as unknown[];
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    console.log(`[Entregador] Nenhum entregador cadastrado para empresa ${empresaId}`);
+    return;
+  }
+
+  for (const contato of rows as ContatoNotificacao[]) {
+    const numero = formatarNumero(contato.whatsapp);
+    await sendWhatsAppMessage(empresaId, numero, mensagem);
+    console.log(`[Entregador] ✅ Notificado: ${contato.nome} (${numero})`);
+  }
+}
+
+// ── Template para entregador (mais detalhado) ─────────────────
 export function templateEntregaSaindo(dados: {
   clienteNome: string;
   endereco: string;
   pedidoId: number;
+  itens?: string;
+  valor?: string;
 }): string {
-  return `🚚 *Entrega Saindo #${dados.pedidoId}*\n\n👤 ${dados.clienteNome}\n📍 ${dados.endereco}\n\n_Confirmado pelo sistema_`;
+  let msg = `🚚 *ENTREGA — Pedido #${dados.pedidoId}*\n\n`;
+  msg += `👤 *Cliente:* ${dados.clienteNome}\n`;
+  msg += `📍 *Endereço:* ${dados.endereco}\n`;
+  if (dados.itens) msg += `📦 *Itens:* ${dados.itens}\n`;
+  if (dados.valor) msg += `💰 *Valor:* ${dados.valor}\n`;
+  msg += `\n⚡ _Confirme o recebimento respondendo_ *OK*`;
+  return msg;
 }

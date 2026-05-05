@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { protectedProcedure, adminProcedure, empresaProcedure, router } from "./_core/trpc";
 import { generateDelegatedToken } from "./auth";
+import { notificarEntregador, notificarContatos, templateEntregaSaindo } from "./services/notificacoes.service";
 import {
   getDb,
   getAllEmpresas,
@@ -213,13 +214,60 @@ export const pedidosRouter = router({
         statusPagamento: z.enum(["pendente", "pago", "estornado"]).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const db = getDb();
       const { id, ...data } = input;
       await db
         .update(pedidos)
         .set({ ...data, updatedAt: new Date() })
         .where(eq(pedidos.id, id));
+
+      // ── Notifica entregador quando saiu para entrega ──────
+      if (input.status === "saiu_entrega") {
+        try {
+          const empresaId = ctx.empresaId!;
+          const pedido = await getPedidoById(id);
+          const cliente = pedido?.clienteId ? await getClienteById(pedido.clienteId) : null;
+          const clienteNome = cliente?.nome || "Cliente";
+          const endereco = (pedido as any)?.enderecoEntrega || (pedido as any)?.endereco_entrega || "Endereço não informado";
+          const itens = Array.isArray((pedido as any)?.itens)
+            ? (pedido as any).itens.map((i: any) => `${i.qtd}x ${i.nome}`).join(", ")
+            : "Itens do pedido";
+          const valor = pedido?.valorTotal
+            ? (pedido.valorTotal / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+            : "—";
+
+          const msgEntregador = templateEntregaSaindo({ clienteNome, endereco, pedidoId: id, itens, valor });
+          notificarEntregador(empresaId, msgEntregador).catch(console.error);
+
+          // Também notifica proprietário
+          notificarContatos(empresaId, "entrega", `🚚 *Pedido #${id} saiu para entrega!*\n👤 ${clienteNome}\n📍 ${endereco}`).catch(console.error);
+        } catch (err) {
+          console.error("[Entregador] Erro ao notificar:", err);
+        }
+      }
+
+      return { success: true };
+    }),
+
+  // ── Chama entregador manualmente (sem mudar status) ────────
+  chamarEntregador: empresaProcedure
+    .input(z.object({ pedidoId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const empresaId = ctx.empresaId!;
+      const pedido = await getPedidoById(input.pedidoId);
+      if (!pedido) throw new Error("Pedido não encontrado");
+      const cliente = pedido.clienteId ? await getClienteById(pedido.clienteId) : null;
+      const clienteNome = cliente?.nome || "Cliente";
+      const endereco = (pedido as any)?.enderecoEntrega || (pedido as any)?.endereco_entrega || "Endereço não informado";
+      const itens = Array.isArray((pedido as any)?.itens)
+        ? (pedido as any).itens.map((i: any) => `${i.qtd}x ${i.nome}`).join(", ")
+        : "Ver pedido no sistema";
+      const valor = pedido.valorTotal
+        ? (pedido.valorTotal / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+        : "—";
+      const msg = templateEntregaSaindo({ clienteNome, endereco, pedidoId: input.pedidoId, itens, valor });
+      await notificarEntregador(empresaId, msg);
       return { success: true };
     }),
 });

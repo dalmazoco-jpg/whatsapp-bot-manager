@@ -13,6 +13,12 @@ export function useAuth(_options?: UseAuthOptions) {
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
+    onSuccess: (data) => {
+      console.log("[useAuth] auth.me success:", data);
+    },
+    onError: (error) => {
+      console.log("[useAuth] auth.me error:", error);
+    },
   });
 
   const logoutMutation = trpc.auth.logout.useMutation({

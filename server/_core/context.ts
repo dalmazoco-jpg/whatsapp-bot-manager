@@ -1,7 +1,8 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { Usuario } from "../../drizzle/schema";
 import { getOrCreateAdminUser, getUsuarioById } from "../db";
-import { verifyToken } from "../auth";
+import { LOGGED_OUT_COOKIE, verifyToken } from "../auth";
+import { ENV } from "./env";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -10,6 +11,20 @@ export type TrpcContext = {
   empresaId: number | null;
   isDelegated?: boolean;
 };
+
+function createDevelopmentAdminUser(): Usuario {
+  const now = new Date();
+  return {
+    id: 1,
+    empresaId: null,
+    email: "admin@sistema.com",
+    senhaHash: "",
+    nome: "Admin Sistema",
+    role: "admin",
+    createdAt: now,
+    lastSignedIn: now,
+  };
+}
 
 export async function createContext(
   opts: CreateExpressContextOptions
@@ -24,7 +39,18 @@ export async function createContext(
   if (token) {
     const payload = verifyToken(token);
     if (payload) {
-      const user = await getUsuarioById(payload.userId);
+      let user: Usuario | undefined;
+      try {
+        user = await getUsuarioById(payload.userId);
+      } catch (error) {
+        if (
+          process.env.NODE_ENV !== "development" &&
+          (!ENV.localAuthFallback || payload.role !== "admin")
+        ) {
+          throw error;
+        }
+        user = createDevelopmentAdminUser();
+      }
       if (user) {
         // Se tem delegatedEmpresaId, usar esse contexto
         const isDelegated = !!payload.delegatedEmpresaId;
@@ -41,8 +67,17 @@ export async function createContext(
   }
 
   // Modo desenvolvimento: auto-login como admin local
-  if (process.env.NODE_ENV === "development" && !token) {
-    const adminUser = await getOrCreateAdminUser();
+  if (
+    process.env.NODE_ENV === "development" &&
+    !token &&
+    req.cookies?.[LOGGED_OUT_COOKIE] !== "true"
+  ) {
+    let adminUser: Usuario | null | undefined;
+    try {
+      adminUser = await getOrCreateAdminUser();
+    } catch (error) {
+      adminUser = createDevelopmentAdminUser();
+    }
     return {
       req,
       res,

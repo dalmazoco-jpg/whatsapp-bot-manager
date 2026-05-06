@@ -10,12 +10,22 @@ import {
 import type { InsertUser, InsertUsuario, InsertApresentacaoConfig } from "../drizzle/schema";
 
 const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) throw new Error("DATABASE_URL não configurada!");
 
-const client = postgres(DATABASE_URL, { ssl: "require", max: 10 });
-const db = drizzle(client);
+type Database = ReturnType<typeof drizzle>;
 
-export function getDb() { return db; }
+let dbInstance: Database | null = null;
+
+export function getDb() {
+  if (!DATABASE_URL) throw new Error("DATABASE_URL não configurada!");
+  dbInstance ??= drizzle(postgres(DATABASE_URL, { ssl: "require", max: 10 }));
+  return dbInstance;
+}
+
+const db = new Proxy({} as Database, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getDb(), prop, receiver);
+  },
+});
 
 export async function ensureApresentacaoConfigTable() {
   await db.execute(`

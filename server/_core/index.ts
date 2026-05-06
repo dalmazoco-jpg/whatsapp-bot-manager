@@ -15,6 +15,7 @@ import { registerApresentacaoRoutes } from "../routes/apresentacao.routes";
 import { registerGoogleCalendarRoutes } from "../routes/google-calendar.routes";
 import { restoreActiveSessions } from "../services/baileys.service";
 import { ensureApresentacaoConfigTable, ensureDefaultAdminUser } from "../db";
+import { ENV } from "./env";
 
 
 
@@ -40,8 +41,14 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  await ensureApresentacaoConfigTable();
-  await ensureDefaultAdminUser();
+  try {
+    await ensureApresentacaoConfigTable();
+    await ensureDefaultAdminUser();
+  } catch (error) {
+    if (process.env.NODE_ENV !== "development" && !ENV.localAuthFallback) throw error;
+    console.warn("[auth-fallback] Banco indisponível; iniciando com autenticação local temporária.");
+    console.warn(error);
+  }
 
   // Middleware base
   app.use(express.json({ limit: "50mb" }));
@@ -110,11 +117,13 @@ server.listen(port, "0.0.0.0", () => {
 });
 
   // Restaurar sessões Baileys ativas
-  setTimeout(() => {
-    restoreActiveSessions().catch((err) =>
-      console.error("Erro ao restaurar sessões Baileys:", err)
-    );
-  }, 3000);
+  if (!ENV.localAuthFallback) {
+    setTimeout(() => {
+      restoreActiveSessions().catch((err) =>
+        console.error("Erro ao restaurar sessões Baileys:", err)
+      );
+    }, 3000);
+  }
 }
 
 startServer().catch(console.error);

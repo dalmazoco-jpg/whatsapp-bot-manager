@@ -188,7 +188,7 @@ function DashboardLayoutContent({
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
       localStorage.removeItem("auth_token");
-      window.location.href = "/";
+      window.location.href = "/login";
     } catch (err) {
       console.error("Logout error:", err);
     }

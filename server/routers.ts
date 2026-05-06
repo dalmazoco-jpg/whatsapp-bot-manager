@@ -1,5 +1,9 @@
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
+import { getSessionCookieOptions } from "./_core/cookies";
+import { ENV } from "./_core/env";
+import { COOKIE_NAME } from "../shared/const";
+import { LOGGED_OUT_COOKIE } from "./auth";
 import {
   adminRouter,
   clientesRouter,
@@ -51,6 +55,27 @@ export const appRouter = router({
         } : null,
       };
 
+    }),
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      ctx.res.clearCookie(COOKIE_NAME, {
+        ...getSessionCookieOptions(ctx.req),
+        maxAge: -1,
+      });
+      ctx.res.clearCookie("app_session_token", {
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+        secure: ENV.isProduction,
+      });
+      ctx.res.cookie?.(LOGGED_OUT_COOKIE, "true", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: ENV.isProduction,
+        path: "/",
+        maxAge: 5 * 60 * 1000,
+      });
+
+      return { success: true };
     }),
   }),
 

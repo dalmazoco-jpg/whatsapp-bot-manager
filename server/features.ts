@@ -282,8 +282,23 @@ export const pedidosRouter = router({
 // ============================================================
 export const financeiroRouter = router({
   stats: empresaProcedure.query(async ({ ctx }) => {
-    const db = getDb();
     const empresaId = ctx.empresaId!;
+    if (ctx.user.role === "admin" && !empresaId) {
+      return {
+        faturamentoTotal: 0,
+        faturamentoHoje: 0,
+        pedidosTotal: 0,
+        pedidosPendentes: 0,
+        vendasPorMes: [
+          { mes: "Jan", valor: 0 },
+          { mes: "Fev", valor: 0 },
+          { mes: "Mar", valor: 0 },
+          { mes: "Abr", valor: 0 },
+          { mes: "Mai", valor: 0 },
+          { mes: "Jun", valor: 0 },
+        ],
+      };
+    }
 
     const allPedidos = await getPedidosByEmpresaId(empresaId);
     

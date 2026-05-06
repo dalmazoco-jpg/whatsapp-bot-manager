@@ -1,10 +1,24 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { ENV } from "./_core/env";
-import { getDb, getUsuarioByEmail } from "./db";
+import { getDb, getOrCreateAdminUser, getUsuarioByEmail } from "./db";
+import { getSessionCookieOptions } from "./_core/cookies";
+import { COOKIE_NAME } from "../shared/const";
 import { usuarios, type InsertUsuario } from "../drizzle/schema";
 import type { Request, Response } from "express";
-import { getOrCreateAdminUser, getUsuarioByEmail } from "./db";
+
+export const LOGGED_OUT_COOKIE = "app_logged_out";
+
+function setSessionTokenCookie(res: Response, token: string) {
+  res.clearCookie(LOGGED_OUT_COOKIE, { path: "/" });
+  res.cookie("app_session_token", token, {
+    httpOnly: true,
+    secure: ENV.isProduction,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
 
 export type JwtPayload = {
   userId: number;
@@ -46,6 +60,14 @@ export function verifyToken(token: string): JwtPayload | null {
   }
 }
 
+function isDefaultDevelopmentAdmin(email: string, senha: string) {
+  return (
+    (process.env.NODE_ENV === "development" || ENV.localAuthFallback) &&
+    email === "admin@sistema.com" &&
+    senha === "admin123"
+  );
+}
+
 /**
  * POST /api/auth/login
  * Body: { email, senha }
@@ -59,7 +81,33 @@ export async function handleLogin(req: Request, res: Response) {
       return res.status(400).json({ error: "Email e senha são obrigatórios" });
     }
 
-    const usuario = await getUsuarioByEmail(email);
+    let usuario;
+    try {
+      usuario = await getUsuarioByEmail(email);
+    } catch (error) {
+      if (!isDefaultDevelopmentAdmin(email, senha)) throw error;
+
+      const token = generateToken({
+        userId: 1,
+        empresaId: null,
+        role: "admin",
+        email,
+      });
+
+      setSessionTokenCookie(res, token);
+
+      return res.json({
+        token,
+        user: {
+          id: 1,
+          nome: "Admin Sistema",
+          email,
+          role: "admin",
+          empresaId: null,
+        },
+      });
+    }
+
     if (!usuario) {
       return res.status(401).json({ error: "Credenciais inválidas" });
     }
@@ -76,13 +124,7 @@ export async function handleLogin(req: Request, res: Response) {
       email: usuario.email,
     });
 
-    // Set cookie
-    res.cookie("app_session_token", token, {
-      httpOnly: true,
-      secure: ENV.isProduction,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    setSessionTokenCookie(res, token);
 
     return res.json({
       token,
@@ -149,8 +191,24 @@ export async function handleRegister(req: Request, res: Response) {
 /**
  * POST /api/auth/logout
  */
-export async function handleLogout(_req: Request, res: Response) {
-  res.clearCookie("app_session_token");
+export async function handleLogout(req: Request, res: Response) {
+  res.clearCookie("app_session_token", {
+    httpOnly: true,
+    secure: ENV.isProduction,
+    sameSite: "lax",
+    path: "/",
+  });
+  res.clearCookie(COOKIE_NAME, {
+    ...getSessionCookieOptions(req),
+    maxAge: -1,
+  });
+  res.cookie(LOGGED_OUT_COOKIE, "true", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: ENV.isProduction,
+    path: "/",
+    maxAge: 5 * 60 * 1000,
+  });
   return res.json({ success: true });
 }
 
@@ -206,13 +264,7 @@ export async function handleDevLogin(_req: Request, res: Response) {
       email: admin.email,
     });
 
-    // Set cookie for convenience
-    res.cookie("app_session_token", token, {
-      httpOnly: true,
-      secure: ENV.isProduction,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    setSessionTokenCookie(res, token);
 
     return res.json({ token, user: { id: admin.id, nome: admin.nome, email: admin.email, role: admin.role } });
   } catch (err) {

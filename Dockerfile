@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 
 # Instalar git e dependências de build
@@ -7,13 +7,13 @@ RUN npm install -g pnpm@10.4.1
 
 # Copiar e instalar dependências
 COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --no-frozen-lockfile --ignore-scripts
+RUN pnpm install --no-frozen-lockfile
 
 # Copiar código e fazer build
 COPY . .
 RUN pnpm build
 
-FROM node:20-slim AS runner
+FROM node:22-slim AS runner
 WORKDIR /app
 RUN apt-get update && apt-get install -y git python3 make g++ && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@10.4.1

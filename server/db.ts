@@ -106,7 +106,7 @@ export async function getUsuarioById(id: number) {
 
 // ── empresas ─────────────────────────────────────────────────
 export async function getAllEmpresas() {
-  return db.select().from(empresas).orderBy(empresas.createdAt);
+  return await db.select().from(empresas).orderBy(empresas.createdAt);
 }
 export async function getEmpresaById(id: number) {
   const r = await db.select().from(empresas).where(eq(empresas.id, id)).limit(1);
@@ -121,7 +121,7 @@ export async function getSessaoByEmpresaId(empresaId: number) {
 
 // ── clientes ─────────────────────────────────────────────────
 export async function getClientesByEmpresaId(empresaId: number) {
-  return db.select().from(clientesWhatsapp).where(eq(clientesWhatsapp.empresaId, empresaId));
+  return await db.select().from(clientesWhatsapp).where(eq(clientesWhatsapp.empresaId, empresaId));
 }
 export async function getClienteById(id: number) {
   const r = await db.select().from(clientesWhatsapp).where(eq(clientesWhatsapp.id, id)).limit(1);
@@ -135,7 +135,7 @@ export const getClientesByUserId = getClientesByEmpresaId;
 
 // ── pedidos ──────────────────────────────────────────────────
 export async function getPedidosByEmpresaId(empresaId: number) {
-  return db.select().from(pedidos).where(eq(pedidos.empresaId, empresaId));
+  return await db.select().from(pedidos).where(eq(pedidos.empresaId, empresaId));
 }
 export async function getPedidoById(id: number) {
   const r = await db.select().from(pedidos).where(eq(pedidos.id, id)).limit(1);
@@ -145,7 +145,7 @@ export const getPedidosByUserId = getPedidosByEmpresaId;
 
 // ── agendamentos ─────────────────────────────────────────────
 export async function getAgendamentosByEmpresaId(empresaId: number) {
-  return db.select().from(agendamentos).where(eq(agendamentos.empresaId, empresaId));
+  return await db.select().from(agendamentos).where(eq(agendamentos.empresaId, empresaId));
 }
 export async function getAgendamentoById(id: number) {
   const r = await db.select().from(agendamentos).where(eq(agendamentos.id, id)).limit(1);
@@ -155,11 +155,11 @@ export const getAgendamentosByUserId = getAgendamentosByEmpresaId;
 
 // ── cardapio ─────────────────────────────────────────────────
 export async function getCardapioByEmpresaId(empresaId: number) {
-  return db.select().from(cardapioItens).where(eq(cardapioItens.empresaId, empresaId));
+  return await db.select().from(cardapioItens).where(eq(cardapioItens.empresaId, empresaId));
 }
 
 export async function getCardapioDisponivelByEmpresaId(empresaId: number) {
-  return db.select().from(cardapioItens).where(and(eq(cardapioItens.empresaId, empresaId), eq(cardapioItens.disponivel, true))).orderBy(cardapioItens.categoria, cardapioItens.nome);
+  return await db.select().from(cardapioItens).where(and(eq(cardapioItens.empresaId, empresaId), eq(cardapioItens.disponivel, true))).orderBy(cardapioItens.categoria, cardapioItens.nome);
 }
 
 // ── apresentação comercial ───────────────────────────────────────
@@ -216,19 +216,19 @@ export async function getPublicApresentacaoDataBySlug(slug: string) {
 
 // ── horarios ─────────────────────────────────────────────────
 export async function getHorariosByEmpresaId(empresaId: number) {
-  return db.select().from(horariosAtendimento).where(eq(horariosAtendimento.empresaId, empresaId));
+  return await db.select().from(horariosAtendimento).where(eq(horariosAtendimento.empresaId, empresaId));
 }
 
 // ── mensagens ────────────────────────────────────────────────
 export async function getMensagensByClienteId(clienteId: number) {
-  return db.select().from(mensagensLog).where(eq(mensagensLog.clienteId, clienteId));
+  return await db.select().from(mensagensLog).where(eq(mensagensLog.clienteId, clienteId));
 }
 export async function getMensagensByEmpresaId(empresaId: number) {
-  return db.select().from(mensagensLog).where(eq(mensagensLog.empresaId, empresaId));
+  return await db.select().from(mensagensLog).where(eq(mensagensLog.empresaId, empresaId));
 }
 
 // ── notificacoes ─────────────────────────────────────────────
 export async function getNotificacoesByEmpresaId(empresaId: number) {
-  return db.select().from(notificacoes).where(eq(notificacoes.empresaId, empresaId));
+  return await db.select().from(notificacoes).where(eq(notificacoes.empresaId, empresaId));
 }
 export const getNotificacoesByUserId = getNotificacoesByEmpresaId;

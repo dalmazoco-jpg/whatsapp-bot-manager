@@ -24,8 +24,11 @@ function Router() {
   const [location, setLocation] = useLocation();
   const isPublicRoute = location.startsWith("/public/");
   const isLoginRoute = location === "/login";
+  
+  // Only query if not on login/public routes
+  const queryEnabled = !isPublicRoute && !isLoginRoute;
   const { data: me, isLoading, refetch } = trpc.auth.me.useQuery(undefined, {
-    enabled: !isPublicRoute && !isLoginRoute,
+    enabled: queryEnabled,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -38,7 +41,13 @@ function Router() {
     setLocation("/dashboard");
   }, [refetch, setLocation]);
 
-  if (isLoading) {
+  // If we're on login route, skip loading check and render login directly
+  if (isLoginRoute) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // For non-login routes, show loading while checking auth
+  if (queryEnabled && isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -47,10 +56,6 @@ function Router() {
         </div>
       </div>
     );
-  }
-
-  if (isLoginRoute) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
   if ((!me || forceLogin) && !isPublicRoute) {

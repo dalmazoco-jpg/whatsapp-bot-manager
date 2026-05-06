@@ -6,17 +6,20 @@ import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Dashboard() {
   const { data: me } = trpc.auth.me.useQuery();
-  const { data: clientes } = trpc.clientes.list.useQuery();
-  const { data: pedidos } = trpc.pedidos.list.useQuery();
-  const { data: agendamentos } = trpc.agendamentos.list.useQuery();
+  const { data: clientes = [] } = trpc.clientes.list.useQuery();
+  const { data: pedidos, error: pedidosError } = trpc.pedidos.list.useQuery();
+  const { data: agendamentos = [] } = trpc.agendamentos.list.useQuery();
   const { data: whatsappStatus } = trpc.whatsapp.status.useQuery();
 
   const { data: financeiro } = trpc.financeiro.stats.useQuery();
+
+  console.log("Dashboard - pedidos data:", pedidos, "error:", pedidosError);
   
-  const totalClientes = clientes?.length || 0;
-  const totalPedidos = pedidos?.length || 0;
-  const totalAgendamentos = agendamentos?.length || 0;
-  const pedidosConfirmados = pedidos?.filter((p) => p.status === "confirmado" || p.status === "entregue").length || 0;
+  const pedidosArray = Array.isArray(pedidos) ? pedidos : [];
+  const totalClientes = Array.isArray(clientes) ? clientes.length : 0;
+  const totalPedidos = pedidosArray.length || 0;
+  const totalAgendamentos = Array.isArray(agendamentos) ? agendamentos.length : 0;
+  const pedidosConfirmados = pedidosArray.filter((p) => p.status === "confirmado" || p.status === "entregue").length || 0;
   const taxaConversao = totalPedidos > 0 ? ((pedidosConfirmados / totalPedidos) * 100).toFixed(1) : "0";
   const isWhatsappConectado = whatsappStatus && "status" in whatsappStatus && whatsappStatus.status === "conectado";
 

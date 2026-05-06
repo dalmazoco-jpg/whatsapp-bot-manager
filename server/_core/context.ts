@@ -40,10 +40,13 @@ export async function createContext(
   if (token) {
     const payload = verifyToken(token);
     if (payload) {
+      console.log("[CONTEXT] Token payload:", payload);
       let user: Usuario | undefined;
       try {
         user = await getUsuarioById(payload.userId);
+        console.log("[CONTEXT] User from DB:", user);
       } catch (error) {
+        console.log("[CONTEXT] DB error, trying fallback:", error.message);
         if (
           process.env.NODE_ENV !== "development" &&
           (!ENV.localAuthFallback || payload.role !== "admin")
@@ -51,8 +54,10 @@ export async function createContext(
           throw error;
         }
         user = findFallbackUserById(payload.userId, payload.email) ?? createDevelopmentAdminUser(payload.email);
+        console.log("[CONTEXT] Fallback user:", user);
       }
       if (user) {
+        console.log("[CONTEXT] Final user:", { id: user.id, email: user.email, role: user.role });
         // Se tem delegatedEmpresaId, usar esse contexto
         const isDelegated = !!payload.delegatedEmpresaId;
         const empresaId = payload.delegatedEmpresaId || user.empresaId;

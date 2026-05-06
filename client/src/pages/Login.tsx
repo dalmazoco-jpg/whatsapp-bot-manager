@@ -51,6 +51,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         localStorage.setItem("auth_token", data.token);
       }
 
+      window.location.href = data.user?.role === "admin" ? "/admin" : "/dashboard";
       onLoginSuccess();
     } catch (err) {
       setError("Erro de conexão. Tente novamente.");

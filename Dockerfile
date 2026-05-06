@@ -24,4 +24,5 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 8080
 ENV NODE_ENV=production
+ENV LOCAL_AUTH_FALLBACK=true
 CMD ["node", "dist/index.js"]

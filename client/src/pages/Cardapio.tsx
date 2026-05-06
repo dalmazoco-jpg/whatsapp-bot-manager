@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcArray } from "@/lib/trpcData";
 import {
   Package,
   Plus,
@@ -27,6 +28,7 @@ type ProdutoPreview = {
 
 export default function Cardapio() {
   const { data: itens, isLoading, refetch } = trpc.cardapio.list.useQuery();
+  const itensArray = unwrapTrpcArray<typeof itens extends Array<infer T> ? T : any>(itens);
   const criarItem = trpc.cardapio.create.useMutation({ onSuccess: () => refetch() });
   const updateItem = trpc.cardapio.update.useMutation({ onSuccess: () => refetch() });
   const deleteItem = trpc.cardapio.delete.useMutation({ onSuccess: () => refetch() });
@@ -229,7 +231,7 @@ export default function Cardapio() {
     refetch();
   };
 
-  const categorias = itens ? [...new Set(itens.map((i) => i.categoria || "Geral"))].sort() : [];
+  const categorias = [...new Set(itensArray.map((i) => i.categoria || "Geral"))].sort();
 
   return (
     <DashboardLayout>
@@ -436,7 +438,7 @@ disabled={criarItem.isPending}>
           ) : (
             <div className="space-y-6">
               {categorias.map((cat) => {
-                const catItens = itens?.filter((i) => (i.categoria || "Geral") === cat) || [];
+                const catItens = itensArray.filter((i) => (i.categoria || "Geral") === cat);
 
                 return (
                   <Card key={cat} className="border border-border">

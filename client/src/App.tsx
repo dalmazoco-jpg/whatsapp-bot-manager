@@ -17,7 +17,9 @@ import Financeiro from "./pages/Financeiro";
 import AdminClienteConexao from "./pages/AdminClienteConexao";
 import Apresentacao from "./pages/Apresentacao";
 import PublicApresentacao from "./pages/PublicApresentacao";
+import DashboardLayout from "./components/DashboardLayout";
 import { trpc } from "./lib/trpc";
+import { unwrapTrpcData } from "./lib/trpcData";
 import { useState, useCallback } from "react";
 
 function Router() {
@@ -27,11 +29,20 @@ function Router() {
   
   // Only query if not on login/public routes
   const queryEnabled = !isPublicRoute && !isLoginRoute;
-  const { data: me, isLoading, refetch } = trpc.auth.me.useQuery(undefined, {
+  const { data: meData, isLoading, refetch } = trpc.auth.me.useQuery(undefined, {
     enabled: queryEnabled,
     retry: false,
     refetchOnWindowFocus: false,
   });
+  const me = unwrapTrpcData<{
+    id: number;
+    nome: string;
+    email: string;
+    role: string;
+    empresaId: number | null;
+    isDelegated?: boolean;
+    empresa?: { nome: string; ramo?: string } | null;
+  } | null>(meData);
 
   const [forceLogin, setForceLogin] = useState(false);
 
@@ -63,6 +74,23 @@ function Router() {
   }
 
   const isAdmin = me?.role === "admin";
+  const AdminOnly = ({ children }: { children: React.ReactNode }) => {
+    if (isAdmin) return <>{children}</>;
+
+    return (
+      <DashboardLayout>
+        <div className="container mx-auto px-4 py-12">
+          <div className="max-w-xl rounded-lg border border-border bg-background p-6">
+            <h1 className="typography-h2 mb-2">Acesso de administrador necessário</h1>
+            <p className="text-muted-foreground">
+              Você está logado como {me?.email || "usuário"} com perfil {me?.role || "desconhecido"}.
+              Saia dessa conta e entre com o master admin para criar empresas e clientes.
+            </p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  };
 
   return (
     <Switch>
@@ -71,9 +99,9 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/dashboard" component={Dashboard} />
 
-      {/* Admin (somente admin) */}
-      {isAdmin && <Route path="/admin" component={Admin} />}
-      {isAdmin && <Route path="/admin/cliente/:empresaId" component={AdminClienteConexao} />}
+      {/* Admin */}
+      <Route path="/admin" component={() => <AdminOnly><Admin /></AdminOnly>} />
+      <Route path="/admin/cliente/:empresaId" component={() => <AdminOnly><AdminClienteConexao /></AdminOnly>} />
 
       {/* Empresa pages */}
       <Route path="/whatsapp" component={ConexaoWhatsApp} />

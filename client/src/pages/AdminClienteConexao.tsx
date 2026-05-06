@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useRoute, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcArray } from "@/lib/trpcData";
 import {
   Smartphone,
   QrCode,
@@ -21,8 +22,10 @@ export default function AdminClienteConexao() {
   const empresaId = params?.empresaId;
   const [, setLocation] = useLocation();
 
-  const { data: empresa } = trpc.admin.empresas.useQuery();
-  const empresaData = empresa?.find((e) => e.id === empresaId);
+  const { data: empresasData } = trpc.admin.empresas.useQuery();
+  const empresas = unwrapTrpcArray<typeof empresasData extends Array<infer T> ? T : any>(empresasData);
+  const empresaIdNumber = empresaId ? Number(empresaId) : NaN;
+  const empresaData = empresas.find((e) => e.id === empresaIdNumber);
 
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("desconectado");
@@ -31,7 +34,7 @@ export default function AdminClienteConexao() {
 
   // Conectar ao SSE para receber QR em tempo real
   const startSSE = () => {
-    if (!empresaId) return;
+    if (!empresaIdNumber) return;
 
     // Fechar conexão anterior
     if (eventSourceRef.current) {
@@ -39,7 +42,7 @@ export default function AdminClienteConexao() {
     }
 
     const token = localStorage.getItem("auth_token") || "";
-    const url = `/api/whatsapp/qr-stream/${empresaId}?token=${encodeURIComponent(token)}`;
+    const url = `/api/whatsapp/qr-stream/${empresaIdNumber}?token=${encodeURIComponent(token)}`;
     const es = new EventSource(url);
 
     es.onmessage = (event) => {
@@ -92,13 +95,13 @@ export default function AdminClienteConexao() {
 
   // Iniciar conexão WhatsApp
   const handleConnect = async () => {
-    if (!empresaId) return;
+    if (!empresaIdNumber) return;
     setConnecting(true);
     setQrImage(null);
 
     try {
       const token = localStorage.getItem("auth_token") || "";
-      await fetch(`/api/whatsapp/connect/${empresaId}`, {
+      await fetch(`/api/whatsapp/connect/${empresaIdNumber}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -117,11 +120,11 @@ export default function AdminClienteConexao() {
 
   // Desconectar
   const handleDisconnect = async () => {
-    if (!empresaId) return;
+    if (!empresaIdNumber) return;
 
     try {
       const token = localStorage.getItem("auth_token") || "";
-      await fetch(`/api/whatsapp/disconnect/${empresaId}`, {
+      await fetch(`/api/whatsapp/disconnect/${empresaIdNumber}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

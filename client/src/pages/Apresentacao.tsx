@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcArray } from "@/lib/trpcData";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ export default function Apresentacao() {
   const [activeTab, setActiveTab] = useState("cardapio");
   const { data: config, isLoading: configLoading, refetch: refetchConfig } = trpc.apresentacao.getConfig.useQuery();
   const { data: itens, isLoading: itensLoading } = trpc.cardapio.list.useQuery();
+  const itensArray = unwrapTrpcArray<typeof itens extends Array<infer T> ? T : any>(itens);
   const updateConfig = trpc.apresentacao.updateConfig.useMutation({
     onSuccess: () => {
       toast.success("Configuração salva");
@@ -64,8 +66,8 @@ export default function Apresentacao() {
   }, [config]);
 
   const availableItems = useMemo(
-    () => itens?.filter((item) => item.disponivel).sort((a, b) => a.categoria.localeCompare(b.categoria) || a.nome.localeCompare(b.nome)) || [],
-    [itens]
+    () => itensArray.filter((item) => item.disponivel).sort((a, b) => a.categoria.localeCompare(b.categoria) || a.nome.localeCompare(b.nome)),
+    [itensArray]
   );
 
   const categories = useMemo(
@@ -176,7 +178,7 @@ export default function Apresentacao() {
                         <div className="h-4 w-3/4 bg-slate-700 rounded" />
                         <div className="h-4 w-1/2 bg-slate-700 rounded" />
                       </div>
-                    ) : !itens || itens.length === 0 ? (
+                    ) : itensArray.length === 0 ? (
                       <p className="text-sm text-muted-foreground">Nenhum item cadastrado ainda.</p>
                     ) : (
                       <div className="space-y-4">

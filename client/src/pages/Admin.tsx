@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcArray } from "@/lib/trpcData";
 import {
   Building2,
   Plus,
@@ -24,7 +25,8 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Admin() {
-  const { data: empresas, isLoading, refetch } = trpc.admin.empresas.useQuery();
+  const { data: empresasData, isLoading, refetch } = trpc.admin.empresas.useQuery();
+  const empresas = unwrapTrpcArray<typeof empresasData extends Array<infer T> ? T : any>(empresasData);
 
   const criarEmpresa = trpc.admin.criarEmpresa.useMutation({
     onSuccess: () => refetch(),

@@ -14,6 +14,7 @@ import {
   getAgendamentoById,
   getCardapioByEmpresaId,
   getApresentacaoConfigByEmpresaId,
+  getApresentacaoConfigBySlug,
   getPublicApresentacaoDataBySlug,
   getHorariosByEmpresaId,
   getMensagensByClienteId,

@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcArray } from "@/lib/trpcData";
 import {
   Calendar, Clock, Plus, Trash2, Bell, BellOff,
   CheckCircle2, XCircle, Loader2, ExternalLink,
@@ -93,7 +94,8 @@ export default function Agendamentos() {
     await carregarContatos();
   };
 
-  const agOrdenados = [...(agendamentos || [])].sort(
+  const agendamentosArray = unwrapTrpcArray<typeof agendamentos extends Array<infer T> ? T : any>(agendamentos);
+  const agOrdenados = [...agendamentosArray].sort(
     (a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime()
   );
   const proximos = agOrdenados.filter(a => new Date(a.dataHora) >= new Date());

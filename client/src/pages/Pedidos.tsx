@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcArray } from "@/lib/trpcData";
 import { Search, Package, ShoppingBag, Clock, CheckCircle2, DollarSign, Truck, Bell } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 
@@ -33,13 +34,14 @@ export default function Pedidos() {
     return `${date.toLocaleDateString("pt-BR")} ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
   };
 
-  const filteredPedidos = pedidos?.filter((p) => {
+  const pedidosArray = unwrapTrpcArray<typeof pedidos extends Array<infer T> ? T : any>(pedidos);
+  const filteredPedidos = pedidosArray.filter((p) => {
     const matchesSearch =
       (p.observacoes || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.id.toString().includes(searchTerm);
     const matchesStatus = statusFilter === "todos" || p.status === statusFilter;
     return matchesSearch && matchesStatus;
-  }) || [];
+  });
 
   // Summary stats
   const totalReceita = filteredPedidos

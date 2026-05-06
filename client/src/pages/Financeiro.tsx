@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcArray } from "@/lib/trpcData";
 import { DollarSign, TrendingUp, AlertCircle, CheckCircle2 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import {
@@ -21,7 +22,8 @@ export default function Financeiro() {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value / 100);
   };
 
-  const pedidosValidos = pedidos?.filter(p => p.status !== "cancelado") || [];
+  const pedidosArray = unwrapTrpcArray<typeof pedidos extends Array<infer T> ? T : any>(pedidos);
+  const pedidosValidos = pedidosArray.filter(p => p.status !== "cancelado");
   
   const receitaTotal = pedidosValidos.reduce((acc, p) => acc + (p.valorTotal + p.taxaEntrega), 0);
   

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcData } from "@/lib/trpcData";
 import {
   LayoutDashboard,
   LogOut,
@@ -52,10 +53,19 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { data: me, isLoading } = trpc.auth.me.useQuery(undefined, {
+  const { data: meData, isLoading } = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
   });
+  const me = unwrapTrpcData<{
+    id: number;
+    nome: string;
+    email: string;
+    role: string;
+    empresaId: number | null;
+    isDelegated?: boolean;
+    empresa?: { nome: string; ramo?: string } | null;
+  } | null>(meData);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);

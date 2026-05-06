@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcArray } from "@/lib/trpcData";
 import { useLocation } from "wouter";
 import { Plus, Search, MessageCircle, Phone, Mail, LogIn } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -14,9 +15,10 @@ export default function Clientes() {
   const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filteredClientes = clientes?.filter(
+  const clientesArray = unwrapTrpcArray<typeof clientes extends Array<infer T> ? T : any>(clientes);
+  const filteredClientes = clientesArray.filter(
     (c) => c.nome.toLowerCase().includes(searchTerm.toLowerCase()) || c.whatsappNumber.includes(searchTerm)
-  ) || [];
+  );
 
   const handleAcessarEmpresa = async (empresaId: number) => {
     try {

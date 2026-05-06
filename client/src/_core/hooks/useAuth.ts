@@ -40,10 +40,10 @@ export function useAuth(_options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => ({
-    user: meQuery.data ?? null,
+    user: meQuery.data?.json ?? null,
     loading: meQuery.isLoading || logoutMutation.isPending,
     error: meQuery.error ?? logoutMutation.error ?? null,
-    isAuthenticated: Boolean(meQuery.data),
+    isAuthenticated: Boolean(meQuery.data?.json),
   }), [meQuery.data, meQuery.error, meQuery.isLoading, logoutMutation.error, logoutMutation.isPending]);
 
   // Modo local: sem redirecionamento para OAuth

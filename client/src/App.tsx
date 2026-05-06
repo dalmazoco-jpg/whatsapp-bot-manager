@@ -90,6 +90,7 @@ function Router() {
               <p>Debug info:</p>
               <p>isAdmin: {isAdmin ? 'true' : 'false'}</p>
               <p>me exists: {me ? 'true' : 'false'}</p>
+              <p>me object: {JSON.stringify(me)}</p>
               <p>me.role: {me?.role}</p>
               <p>me.email: {me?.email}</p>
             </div>

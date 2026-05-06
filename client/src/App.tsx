@@ -21,10 +21,11 @@ import { trpc } from "./lib/trpc";
 import { useState, useCallback } from "react";
 
 function Router() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const isPublicRoute = location.startsWith("/public/");
+  const isLoginRoute = location === "/login";
   const { data: me, isLoading, refetch } = trpc.auth.me.useQuery(undefined, {
-    enabled: !isPublicRoute,
+    enabled: !isPublicRoute && !isLoginRoute,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -34,7 +35,8 @@ function Router() {
   const handleLoginSuccess = useCallback(() => {
     setForceLogin(false);
     refetch();
-  }, [refetch]);
+    setLocation("/dashboard");
+  }, [refetch, setLocation]);
 
   if (isLoading) {
     return (
@@ -47,6 +49,10 @@ function Router() {
     );
   }
 
+  if (isLoginRoute) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
   if ((!me || forceLogin) && !isPublicRoute) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -56,6 +62,7 @@ function Router() {
   return (
     <Switch>
       {/* Dashboard principal */}
+      <Route path="/login" component={() => <Login onLoginSuccess={handleLoginSuccess} />} />
       <Route path="/" component={Dashboard} />
       <Route path="/dashboard" component={Dashboard} />
 

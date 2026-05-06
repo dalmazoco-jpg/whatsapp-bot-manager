@@ -1,5 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
+import bcrypt from "bcryptjs";
 import postgres from "postgres";
 import {
   users, usuarios, empresas, sessoesWhatsapp, clientesWhatsapp,
@@ -34,6 +35,29 @@ export async function ensureApresentacaoConfigTable() {
       updated_at timestamp NOT NULL DEFAULT now()
     )
   `);
+}
+
+export async function ensureDefaultAdminUser() {
+  const email = "admin@sistema.com";
+  const senhaHash = await bcrypt.hash("admin123", 10);
+  await db
+    .insert(usuarios)
+    .values({
+      email,
+      senhaHash,
+      nome: "Admin Sistema",
+      role: "admin",
+      empresaId: null,
+    })
+    .onConflictDoUpdate({
+      target: usuarios.email,
+      set: {
+        senhaHash,
+        nome: "Admin Sistema",
+        role: "admin",
+        empresaId: null,
+      },
+    });
 }
 
 // ── users (tRPC compat) ──────────────────────────────────────

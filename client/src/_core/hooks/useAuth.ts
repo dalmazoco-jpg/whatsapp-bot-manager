@@ -13,12 +13,6 @@ export function useAuth(_options?: UseAuthOptions) {
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
-    onSuccess: (data) => {
-      console.log("[useAuth] auth.me success:", data);
-    },
-    onError: (error) => {
-      console.log("[useAuth] auth.me error:", error);
-    },
   });
 
   const logoutMutation = trpc.auth.logout.useMutation({
@@ -40,10 +34,10 @@ export function useAuth(_options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => ({
-    user: meQuery.data?.json ?? null,
+    user: meQuery.data ?? null,
     loading: meQuery.isLoading || logoutMutation.isPending,
     error: meQuery.error ?? logoutMutation.error ?? null,
-    isAuthenticated: Boolean(meQuery.data?.json),
+    isAuthenticated: Boolean(meQuery.data),
   }), [meQuery.data, meQuery.error, meQuery.isLoading, logoutMutation.error, logoutMutation.isPending]);
 
   // Modo local: sem redirecionamento para OAuth

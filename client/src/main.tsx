@@ -37,13 +37,13 @@ queryClient.getMutationCache().subscribe(event => {
 });
 
 const trpcClient = trpc.createClient({
+  transformer: superjson,
   links: [
     httpBatchLink({
       url: "/api/trpc",
-      transformer: superjson,
       fetch(input, init) {
         const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-        const headers = { ...init?.headers };
+        const headers = { ...(init?.headers as Record<string, string> | undefined) };
         if (token) {
           headers["Authorization"] = `Bearer ${token}`;
         }

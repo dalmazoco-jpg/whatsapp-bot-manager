@@ -34,7 +34,15 @@ function Router() {
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const me = meData?.json;
+  const me = unwrapTrpcData<{
+    id: number;
+    nome: string;
+    email: string;
+    role: string;
+    empresaId: number | null;
+    isDelegated?: boolean;
+    empresa?: { nome: string; ramo?: string } | null;
+  } | null>(meData);
 
   const [forceLogin, setForceLogin] = useState(false);
 
@@ -78,14 +86,6 @@ function Router() {
               Você está logado como {me?.email || "usuário"} com perfil {me?.role || "desconhecido"}.
               Saia dessa conta e entre com o master admin para criar empresas e clientes.
             </p>
-            <div className="text-xs text-muted-foreground">
-              <p>Debug info:</p>
-              <p>isAdmin: {isAdmin ? 'true' : 'false'}</p>
-              <p>me exists: {me ? 'true' : 'false'}</p>
-              <p>me object: {JSON.stringify(me)}</p>
-              <p>me.role: {me?.role}</p>
-              <p>me.email: {me?.email}</p>
-            </div>
           </div>
         </div>
       </DashboardLayout>

@@ -82,10 +82,17 @@ function Router() {
         <div className="container mx-auto px-4 py-12">
           <div className="max-w-xl rounded-lg border border-border bg-background p-6">
             <h1 className="typography-h2 mb-2">Acesso de administrador necessário</h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mb-4">
               Você está logado como {me?.email || "usuário"} com perfil {me?.role || "desconhecido"}.
               Saia dessa conta e entre com o master admin para criar empresas e clientes.
             </p>
+            <div className="text-xs text-muted-foreground">
+              <p>Debug info:</p>
+              <p>isAdmin: {isAdmin ? 'true' : 'false'}</p>
+              <p>me exists: {me ? 'true' : 'false'}</p>
+              <p>me.role: {me?.role}</p>
+              <p>me.email: {me?.email}</p>
+            </div>
           </div>
         </div>
       </DashboardLayout>

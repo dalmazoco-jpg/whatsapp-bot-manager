@@ -34,15 +34,7 @@ function Router() {
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const me = unwrapTrpcData<{
-    id: number;
-    nome: string;
-    email: string;
-    role: string;
-    empresaId: number | null;
-    isDelegated?: boolean;
-    empresa?: { nome: string; ramo?: string } | null;
-  } | null>(meData);
+  const me = meData?.json;
 
   const [forceLogin, setForceLogin] = useState(false);
 

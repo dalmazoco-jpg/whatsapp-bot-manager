@@ -3,6 +3,7 @@ import type { Usuario } from "../../drizzle/schema";
 import { getOrCreateAdminUser, getUsuarioById } from "../db";
 import { LOGGED_OUT_COOKIE, verifyToken } from "../auth";
 import { ENV } from "./env";
+import { findFallbackUserById } from "../fallback-store";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -12,14 +13,14 @@ export type TrpcContext = {
   isDelegated?: boolean;
 };
 
-function createDevelopmentAdminUser(): Usuario {
+function createDevelopmentAdminUser(email = "admin@sistema.com"): Usuario {
   const now = new Date();
   return {
     id: 1,
     empresaId: null,
-    email: "admin@sistema.com",
+    email,
     senhaHash: "",
-    nome: "Admin Sistema",
+    nome: email === "dalmazo.co@gmail.com" ? "Denis Dalmazo" : "Admin Sistema",
     role: "admin",
     createdAt: now,
     lastSignedIn: now,
@@ -49,7 +50,7 @@ export async function createContext(
         ) {
           throw error;
         }
-        user = createDevelopmentAdminUser();
+        user = findFallbackUserById(payload.userId, payload.email) ?? createDevelopmentAdminUser(payload.email);
       }
       if (user) {
         // Se tem delegatedEmpresaId, usar esse contexto

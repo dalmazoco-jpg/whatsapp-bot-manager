@@ -41,6 +41,13 @@ import {
 } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import {
+  createFallbackEmpresa,
+  getFallbackEmpresaById,
+  isFallbackAuthEnabled,
+  listFallbackEmpresas,
+  updateFallbackEmpresaLicenca,
+} from "./fallback-store";
 
 // ============================================================
 // ADMIN — Gerenciamento de Empresas (apenas admin)
@@ -48,6 +55,7 @@ import bcrypt from "bcryptjs";
 export const adminRouter = router({
   // Listar todas as empresas
   empresas: adminProcedure.query(async () => {
+    if (isFallbackAuthEnabled()) return listFallbackEmpresas();
     return getAllEmpresas();
   }),
 
@@ -55,6 +63,7 @@ export const adminRouter = router({
   empresa: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
+      if (isFallbackAuthEnabled()) return getFallbackEmpresaById(input.id);
       return getEmpresaById(input.id);
     }),
 
@@ -72,6 +81,10 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      if (isFallbackAuthEnabled()) {
+        return createFallbackEmpresa(input);
+      }
+
       const db = getDb();
 
       // Criar empresa
@@ -108,6 +121,11 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      if (isFallbackAuthEnabled()) {
+        updateFallbackEmpresaLicenca(input.empresaId, input.ativo, input.diasLicenca);
+        return { success: true };
+      }
+
       const db = getDb();
 
       const licencaExpira = input.ativo && input.diasLicenca
@@ -161,7 +179,9 @@ export const adminRouter = router({
     .mutation(async ({ input, ctx }) => {
       if (!ctx.user) throw new Error("Usuário não autenticado");
 
-      const empresa = await getEmpresaById(input.empresaId);
+      const empresa = isFallbackAuthEnabled()
+        ? getFallbackEmpresaById(input.empresaId)
+        : await getEmpresaById(input.empresaId);
       if (!empresa) throw new Error("Empresa não encontrada");
 
       const token = generateDelegatedToken(ctx.user.id, ctx.user.email, input.empresaId);

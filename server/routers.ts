@@ -22,6 +22,7 @@ import {
 
 import { getEmpresaById } from "./db";
 import type { TrpcContext } from "./_core/context";
+import { getFallbackEmpresaById, isFallbackAuthEnabled } from "./fallback-store";
 
 export const appRouter = router({
 
@@ -34,7 +35,9 @@ export const appRouter = router({
       
       let empresa = null;
       if (opts.ctx.user.empresaId) {
-        empresa = await getEmpresaById(opts.ctx.user.empresaId);
+        empresa = isFallbackAuthEnabled()
+          ? getFallbackEmpresaById(opts.ctx.user.empresaId)
+          : await getEmpresaById(opts.ctx.user.empresaId);
       }
 
       // Detectar se está em modo delegado (admin acessando outra empresa)

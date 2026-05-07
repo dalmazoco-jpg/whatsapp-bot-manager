@@ -37,9 +37,7 @@ function normalizarProduto(item: any): ProdutoExtraido | null {
 
 async function resolveImageUrl(base64Image: string, mimeType: string): Promise<string> {
   if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
-    throw new Error(
-      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY to enable image OCR."
-    );
+    return `data:${mimeType};base64,${base64Image}`;
   }
 
   const buffer = Buffer.from(base64Image, "base64");

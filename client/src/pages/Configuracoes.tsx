@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { unwrapTrpcData } from "@/lib/trpcData";
-import { AlertTriangle, Bot, CreditCard, Download, ExternalLink, FileText, Save, Settings } from "lucide-react";
+import { AlertTriangle, Bot, CreditCard, Download, ExternalLink, FileText, Loader2, Save, Search, Settings } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
 
@@ -47,6 +47,7 @@ export default function Configuracoes() {
   });
   const [licenca, setLicenca] = useState<any>(null);
   const [pagando, setPagando] = useState(false);
+  const [consultandoCnpj, setConsultandoCnpj] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -136,6 +137,43 @@ export default function Configuracoes() {
     });
   };
 
+  const buscarCnpj = async () => {
+    const cnpj = formData.documentoNumero.replace(/\D/g, "");
+    if (cnpj.length !== 14) {
+      toast.error("Informe um CNPJ válido com 14 dígitos.");
+      return;
+    }
+
+    setConsultandoCnpj(true);
+    try {
+      const res = await fetch(`/api/cnpj/${cnpj}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "CNPJ não encontrado.");
+
+      setFormData((prev) => ({
+        ...prev,
+        pessoaTipo: "juridica",
+        documentoTipo: "CNPJ",
+        documentoNumero: data.cnpj || prev.documentoNumero,
+        nome: data.nomeFantasia || data.razaoSocial || prev.nome,
+        nomeCompleto: data.razaoSocial || prev.nomeCompleto,
+        razaoSocial: data.nomeFantasia || prev.razaoSocial,
+        responsavelNome: data.responsavelNome || prev.responsavelNome,
+        email: data.email || prev.email,
+        telefone: data.telefone || prev.telefone,
+        endereco: data.endereco || prev.endereco,
+        cidade: data.cidade || prev.cidade,
+        estado: data.estado || prev.estado,
+        cep: data.cep || prev.cep,
+      }));
+      toast.success("Dados do CNPJ preenchidos.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao consultar CNPJ.");
+    } finally {
+      setConsultandoCnpj(false);
+    }
+  };
+
   const downloadContract = () => {
     const content = contrato?.contratoPreenchido || contrato?.contratoTemplate || "";
     if (!content) {
@@ -216,7 +254,12 @@ export default function Configuracoes() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">CPF/CNPJ</label>
-                  <Input name="documentoNumero" value={formData.documentoNumero} onChange={handleChange} placeholder="000.000.000-00 ou 00.000.000/0000-00" className="border border-border" />
+                  <div className="flex gap-2">
+                    <Input name="documentoNumero" value={formData.documentoNumero} onChange={handleChange} placeholder="000.000.000-00 ou 00.000.000/0000-00" className="border border-border" />
+                    <Button type="button" variant="outline" onClick={buscarCnpj} disabled={consultandoCnpj}>
+                      {consultandoCnpj ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

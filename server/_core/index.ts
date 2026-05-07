@@ -13,6 +13,7 @@ import { handleLogin, handleRegister, handleLogout, handleMe, handleForgotPasswo
 import { registerWhatsAppRoutes } from "../routes/whatsapp.sse";
 import { registerApresentacaoRoutes } from "../routes/apresentacao.routes";
 import { registerCardapioRoutes } from "../routes/cardapio.routes";
+import { registerCnpjRoutes } from "../routes/cnpj.routes";
 import { registerGoogleCalendarRoutes } from "../routes/google-calendar.routes";
 import { registerPagamentosRoutes } from "../routes/pagamentos.routes";
 import { restoreActiveSessions } from "../services/baileys.service";
@@ -86,6 +87,7 @@ async function startServer() {
   registerWhatsAppRoutes(app);
   registerApresentacaoRoutes(app);
   registerCardapioRoutes(app);
+  registerCnpjRoutes(app);
   registerGoogleCalendarRoutes(app);
   registerPagamentosRoutes(app);
 

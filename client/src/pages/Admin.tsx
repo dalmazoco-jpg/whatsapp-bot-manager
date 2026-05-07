@@ -177,6 +177,10 @@ export default function Admin() {
         return;
       }
 
+      const currentToken = localStorage.getItem("auth_token");
+      if (currentToken) {
+        localStorage.setItem("admin_auth_token", currentToken);
+      }
       localStorage.setItem("auth_token", result.token);
       document.cookie = `app_session_token=${result.token}; path=/; SameSite=Lax`;
 

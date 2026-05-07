@@ -148,10 +148,24 @@ function DashboardLayoutContent({
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
       localStorage.removeItem("auth_token");
+      localStorage.removeItem("admin_auth_token");
       window.location.href = "/login";
     } catch (err) {
       console.error("Logout error:", err);
     }
+  };
+
+  const handleReturnToAdmin = () => {
+    const adminToken = localStorage.getItem("admin_auth_token");
+    if (!adminToken) {
+      window.location.href = "/login";
+      return;
+    }
+
+    localStorage.setItem("auth_token", adminToken);
+    localStorage.removeItem("admin_auth_token");
+    document.cookie = `app_session_token=${adminToken}; path=/; SameSite=Lax`;
+    window.location.href = "/admin";
   };
 
   return (
@@ -238,7 +252,7 @@ function DashboardLayoutContent({
               size="sm" 
               variant="outline"
               className="border-yellow-300 text-yellow-800 hover:bg-yellow-100 dark:border-yellow-700 dark:text-yellow-200 dark:hover:bg-yellow-900"
-              onClick={() => setLocation("/clientes")}
+              onClick={handleReturnToAdmin}
             >
               <ArrowLeft className="w-4 h-4 mr-1" />
               Voltar

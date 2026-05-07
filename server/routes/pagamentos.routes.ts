@@ -326,6 +326,13 @@ export function registerPagamentosRoutes(app: Express) {
       const description = req.body.description || `${tipo === "licenca" ? "Licença/instalação" : "Mensalidade"} ${plano.nome}`;
       const provisionalId = isFallbackAuthEnabled() ? nextFaturaId : Date.now();
       const orderNsu = `empresa_${empresaId || "lead"}_fatura_${provisionalId}`;
+      let empresa: any = null;
+      if (empresaId) {
+        empresa = isFallbackAuthEnabled()
+          ? getFallbackEmpresaById(Number(empresaId))
+          : (await getDb().select().from(empresas).where(eq(empresas.id, Number(empresaId))).limit(1))[0];
+      }
+      const responsavelLegal = ((empresa?.configBot as any)?.responsavelLegal ?? null);
 
       const result = await createInfinitePayLink({
         handle: req.body.handle || ENV.infinitePayHandle,
@@ -354,7 +361,14 @@ export function registerPagamentosRoutes(app: Express) {
           slug,
           transactionId,
           paymentLink,
-          metadata: { infinitepay: result.data },
+          metadata: {
+            infinitepay: result.data,
+            cliente: {
+              empresaId,
+              nome: empresa?.nome ?? null,
+              responsavelLegal,
+            },
+          },
         }).returning();
         fatura = created;
       }

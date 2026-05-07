@@ -5,13 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { unwrapTrpcData } from "@/lib/trpcData";
-import { AlertTriangle, Bot, CreditCard, Save, Settings } from "lucide-react";
+import { AlertTriangle, Bot, CreditCard, Download, ExternalLink, FileText, Save, Settings } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
 
 export default function Configuracoes() {
   const { data: configData, refetch } = trpc.configuracoes.get.useQuery();
   const config = unwrapTrpcData<any>(configData);
+  const { data: contratoData, refetch: refetchContrato } = trpc.configuracoes.contrato.useQuery();
+  const contrato = unwrapTrpcData<any>(contratoData);
   const updateConfig = trpc.configuracoes.update.useMutation({
     onSuccess: (data: any) => {
       if (data?.success === false) {
@@ -20,12 +22,25 @@ export default function Configuracoes() {
       }
       toast.success("Configurações salvas");
       refetch();
+      refetchContrato();
     },
     onError: (error: any) => toast.error(error?.message || "Erro ao salvar configurações"),
   });
 
   const [formData, setFormData] = useState({
     nome: "",
+    pessoaTipo: "fisica",
+    razaoSocial: "",
+    nomeCompleto: "",
+    responsavelNome: "",
+    documentoTipo: "CPF",
+    documentoNumero: "",
+    email: "",
+    telefone: "",
+    endereco: "",
+    cidade: "",
+    estado: "",
+    cep: "",
     whatsappNumero: "",
     nomeBot: "",
     systemPrompt: "",
@@ -36,8 +51,22 @@ export default function Configuracoes() {
   useEffect(() => {
     if (config) {
       const configIa = config.configIa as { nomeBot?: string; systemPrompt?: string } | null;
+      const configBot = (config.configBot as any) || {};
+      const responsavel = configBot.responsavelLegal || {};
       setFormData({
         nome: config.nome || "",
+        pessoaTipo: responsavel.pessoaTipo || "fisica",
+        razaoSocial: responsavel.razaoSocial || "",
+        nomeCompleto: responsavel.nomeCompleto || "",
+        responsavelNome: responsavel.responsavelNome || "",
+        documentoTipo: responsavel.documentoTipo || "CPF",
+        documentoNumero: responsavel.documentoNumero || "",
+        email: responsavel.email || "",
+        telefone: responsavel.telefone || "",
+        endereco: responsavel.endereco || "",
+        cidade: responsavel.cidade || "",
+        estado: responsavel.estado || "",
+        cep: responsavel.cep || "",
         whatsappNumero: config.whatsappNumero || "",
         nomeBot: configIa?.nomeBot || "",
         systemPrompt: configIa?.systemPrompt || "",
@@ -83,11 +112,44 @@ export default function Configuracoes() {
     await updateConfig.mutateAsync({
       nome: formData.nome,
       whatsappNumero: formData.whatsappNumero,
+      configBot: {
+        responsavelLegal: {
+          pessoaTipo: formData.pessoaTipo,
+          razaoSocial: formData.razaoSocial,
+          nomeCompleto: formData.nomeCompleto,
+          responsavelNome: formData.responsavelNome,
+          documentoTipo: formData.documentoTipo,
+          documentoNumero: formData.documentoNumero,
+          email: formData.email,
+          telefone: formData.telefone,
+          whatsapp: formData.whatsappNumero,
+          endereco: formData.endereco,
+          cidade: formData.cidade,
+          estado: formData.estado,
+          cep: formData.cep,
+        },
+      },
       configIa: {
         nomeBot: formData.nomeBot || undefined,
         systemPrompt: formData.systemPrompt || undefined,
       },
     });
+  };
+
+  const downloadContract = () => {
+    const content = contrato?.contratoPreenchido || contrato?.contratoTemplate || "";
+    if (!content) {
+      toast.error("Contrato padrão ainda não configurado.");
+      return;
+    }
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `contrato-${(formData.nome || "cliente").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -134,20 +196,78 @@ export default function Configuracoes() {
             </CardContent>
           </Card>
 
-          {/* Dados da Empresa */}
+          {/* Dados do Responsável Legal */}
           <Card className="border border-border">
             <CardHeader>
-              <CardTitle>Dados da Empresa</CardTitle>
+              <CardTitle>Dados do Usuário / Responsável Legal</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Nome da Empresa</label>
-                <Input name="nome" value={formData.nome} onChange={handleChange} placeholder="Pizzaria do Denis" className="border border-border" />
+                <label className="block text-sm font-medium mb-2">Nome comercial ou identificação do cliente</label>
+                <Input name="nome" value={formData.nome} onChange={handleChange} placeholder="Adega do Morro, João Silva, Consultório..." className="border border-border" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tipo de contratante</label>
+                  <select name="pessoaTipo" value={formData.pessoaTipo} onChange={(e) => setFormData((prev) => ({ ...prev, pessoaTipo: e.target.value, documentoTipo: e.target.value === "juridica" ? "CNPJ" : "CPF" }))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="fisica">Pessoa física</option>
+                    <option value="juridica">Pessoa jurídica</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">CPF/CNPJ</label>
+                  <Input name="documentoNumero" value={formData.documentoNumero} onChange={handleChange} placeholder="000.000.000-00 ou 00.000.000/0000-00" className="border border-border" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Nome completo / razão social</label>
+                  <Input name="nomeCompleto" value={formData.nomeCompleto} onChange={handleChange} placeholder="Nome civil ou razão social" className="border border-border" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Responsável legal</label>
+                  <Input name="responsavelNome" value={formData.responsavelNome} onChange={handleChange} placeholder="Quem assina o contrato" className="border border-border" />
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">WhatsApp Conectado</label>
+                <label className="block text-sm font-medium mb-2">Nome fantasia, se houver</label>
+                <Input name="razaoSocial" value={formData.razaoSocial} onChange={handleChange} placeholder="Nome fantasia ou razão social alternativa" className="border border-border" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Email financeiro/contratual</label>
+                  <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="financeiro@email.com" className="border border-border" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Telefone</label>
+                  <Input name="telefone" value={formData.telefone} onChange={handleChange} placeholder="(16) 99999-9999" className="border border-border" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">WhatsApp conectado/cobrança</label>
                 <Input name="whatsappNumero" value={formData.whatsappNumero} onChange={handleChange} placeholder="5511999999999" className="border border-border" />
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Endereço completo</label>
+                <Input name="endereco" value={formData.endereco} onChange={handleChange} placeholder="Rua, número, bairro, complemento" className="border border-border" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Cidade</label>
+                  <Input name="cidade" value={formData.cidade} onChange={handleChange} placeholder="Cidade" className="border border-border" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">UF</label>
+                  <Input name="estado" value={formData.estado} onChange={handleChange} placeholder="SP" className="border border-border" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">CEP</label>
+                  <Input name="cep" value={formData.cep} onChange={handleChange} placeholder="00000-000" className="border border-border" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Estes dados serão usados para contrato, cobrança, emissão de boleto/nota quando configurado e eventual formalização jurídica.
+              </p>
             </CardContent>
           </Card>
 
@@ -178,6 +298,33 @@ export default function Configuracoes() {
                   Regras extras que a IA deve seguir durante o atendimento. O cardápio é carregado automaticamente da aba Cardápio.
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                Contrato para Assinatura
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/20 p-4 text-sm">
+                {contrato?.contratoPreenchido || contrato?.contratoTemplate || "O contrato padrão ainda será configurado pelo administrador."}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" variant="outline" onClick={downloadContract}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Baixar contrato
+                </Button>
+                <Button type="button" variant="outline" onClick={() => window.open("https://www.gov.br/governodigital/pt-br/assinatura-eletronica", "_blank")}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Assinar pelo gov.br
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Após preencher os dados e salvar, baixe o contrato atualizado para assinatura digital.
+              </p>
             </CardContent>
           </Card>
         </div>

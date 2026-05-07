@@ -176,7 +176,7 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {contrato?.contratoTemplate ? (
+        {(contrato?.contratoPreenchido || contrato?.contratoTemplate) ? (
           <Card className="mt-6 border border-border">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -186,7 +186,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/20 p-4 text-sm">
-                {contrato.contratoTemplate}
+                {contrato.contratoPreenchido || contrato.contratoTemplate}
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 Este é o modelo vigente da {contrato.empresa?.nome || "plataforma"} para aceite digital.

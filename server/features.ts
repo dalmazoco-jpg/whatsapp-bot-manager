@@ -67,6 +67,7 @@ import {
   updateFallbackEmpresaLicenca,
 } from "./fallback-store";
 import { PLATFORM_SETTINGS_ID } from "../shared/platform";
+import { getPlanoSaas } from "../shared/billing";
 
 const masterAdminEmail = "dalmazo.co@gmail.com";
 const moduleIds = [
@@ -91,6 +92,47 @@ const requireMasterAdmin = (email?: string | null) => {
   if (email?.toLowerCase() !== masterAdminEmail) {
     throw new Error("Acesso restrito ao administrador master");
   }
+};
+
+const formatCurrency = (centavos: number) =>
+  (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+const renderContract = (template: string, data: Record<string, string>) =>
+  template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => data[key] ?? "");
+
+const buildContractData = (empresa: any, settings: any) => {
+  const configBot = ((empresa?.configBot as any) ?? {}) as Record<string, any>;
+  const responsavel = (configBot.responsavelLegal ?? {}) as Record<string, any>;
+  const plano = getPlanoSaas(String(configBot.planoId || "inicial"));
+  const modulos = Array.isArray(configBot.modules) ? configBot.modules.join(", ") : plano.modules.join(", ");
+  const documentoTipo = responsavel.documentoTipo || (responsavel.documentoNumero?.replace(/\D/g, "").length > 11 ? "CNPJ" : "CPF/CNPJ");
+  const clienteNome =
+    responsavel.nomeCompleto ||
+    responsavel.razaoSocial ||
+    responsavel.responsavelNome ||
+    empresa?.nome ||
+    "Contratante";
+
+  return {
+    cliente_nome: clienteNome,
+    cliente_documento: `${documentoTipo} ${responsavel.documentoNumero || "não informado"}`.trim(),
+    responsavel_nome: responsavel.responsavelNome || responsavel.nomeCompleto || clienteNome,
+    responsavel_email: responsavel.email || "",
+    responsavel_telefone: responsavel.telefone || "",
+    responsavel_whatsapp: empresa?.whatsappNumero || responsavel.whatsapp || "",
+    responsavel_endereco: responsavel.endereco || "",
+    responsavel_cidade: responsavel.cidade || "",
+    responsavel_estado: responsavel.estado || "",
+    responsavel_cep: responsavel.cep || "",
+    plano_nome: plano.nome,
+    modulos_liberados: modulos,
+    valor_licenca: formatCurrency(plano.licencaCentavos),
+    valor_mensalidade: formatCurrency(plano.mensalidadeCentavos),
+    contratada_nome: settings?.razaoSocial || settings?.nome || "DALMAZO & CO.",
+    contratada_cnpj: settings?.cnpj || "",
+    contratada_endereco: settings?.endereco || "",
+    data: new Date().toLocaleDateString("pt-BR"),
+  };
 };
 
 // ============================================================
@@ -1290,13 +1332,22 @@ export const configuracoesRouter = router({
     return getEmpresaById(ctx.empresaId);
   }),
 
-  contrato: protectedProcedure.query(async () => {
+  contrato: protectedProcedure.query(async ({ ctx }) => {
     const settings = isFallbackAuthEnabled()
       ? getFallbackPlatformSettings()
       : await getPlatformSettings();
+    const empresa = ctx.empresaId
+      ? (isFallbackAuthEnabled() ? getFallbackEmpresaById(ctx.empresaId) : await getEmpresaById(ctx.empresaId))
+      : null;
+    const contratoTemplate = (settings as any)?.contratoTemplate || "";
+    const contratoDados = buildContractData(empresa, settings);
     return {
       empresa: settings,
-      contratoTemplate: (settings as any)?.contratoTemplate || "",
+      cliente: empresa,
+      responsavelLegal: ((empresa?.configBot as any)?.responsavelLegal ?? null),
+      contratoTemplate,
+      contratoDados,
+      contratoPreenchido: contratoTemplate ? renderContract(contratoTemplate, contratoDados) : "",
     };
   }),
 
@@ -1305,6 +1356,7 @@ export const configuracoesRouter = router({
       z.object({
         nome: z.string().optional(),
         whatsappNumero: z.string().optional(),
+        configBot: z.record(z.string(), z.any()).optional(),
         configIa: z
           .object({
             systemPrompt: z.string().optional(),
@@ -1329,9 +1381,16 @@ export const configuracoesRouter = router({
         return { success: !!updated, empresa: updated };
       }
       const db = getDb();
+      const existing = await getEmpresaById(ctx.empresaId);
+      const mergedInput = {
+        ...input,
+        configBot: input.configBot
+          ? { ...(((existing?.configBot as any) ?? {}) as Record<string, any>), ...input.configBot }
+          : undefined,
+      };
       await db
         .update(empresas)
-        .set({ ...input, updatedAt: new Date() })
+        .set({ ...mergedInput, updatedAt: new Date() })
         .where(eq(empresas.id, ctx.empresaId));
       return { success: true };
     }),

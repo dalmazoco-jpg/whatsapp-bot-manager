@@ -161,13 +161,16 @@ export function updateFallbackEmpresaLicenca(empresaId: number, ativo: boolean, 
   return true;
 }
 
-export function updateFallbackEmpresaConfig(empresaId: number, data: Partial<Pick<FallbackEmpresa, "nome" | "whatsappNumero" | "configIa">>) {
+export function updateFallbackEmpresaConfig(empresaId: number, data: Partial<Pick<FallbackEmpresa, "nome" | "whatsappNumero" | "configIa" | "configBot">>) {
   const empresa = getFallbackEmpresaById(empresaId);
   if (!empresa) return null;
 
   if (data.nome !== undefined) empresa.nome = data.nome;
   if (data.whatsappNumero !== undefined) empresa.whatsappNumero = data.whatsappNumero || null;
   if (data.configIa !== undefined) empresa.configIa = data.configIa;
+  if (data.configBot !== undefined) {
+    empresa.configBot = { ...(((empresa.configBot as any) ?? {}) as Record<string, any>), ...data.configBot };
+  }
   empresa.updatedAt = new Date();
   return empresa;
 }

@@ -218,6 +218,15 @@ export async function ensureIntegrationTables() {
       planosCustom: [],
     })
     .onConflictDoNothing();
+
+  const settings = await db.select().from(platformSettings).where(eq(platformSettings.id, PLATFORM_SETTINGS_ID)).limit(1);
+  const currentTemplate = settings[0]?.contratoTemplate || "";
+  if (!currentTemplate.includes("CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE SOFTWARE SAAS")) {
+    await db
+      .update(platformSettings)
+      .set({ contratoTemplate: DEFAULT_CONTRACT_TEMPLATE, updatedAt: new Date() })
+      .where(eq(platformSettings.id, PLATFORM_SETTINGS_ID));
+  }
 }
 
 export async function getPlatformSettings() {

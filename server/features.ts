@@ -97,10 +97,13 @@ const requireMasterAdmin = (email?: string | null) => {
 const formatCurrency = (centavos: number) =>
   (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const formatCurrencyNumber = (centavos: number) =>
+  (centavos / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const renderContract = (template: string, data: Record<string, string>) =>
   template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => data[key] ?? "");
 
-const buildContractData = (empresa: any, settings: any) => {
+const buildContractData = (empresa: any, settings: any, ipUsuario = "") => {
   const configBot = ((empresa?.configBot as any) ?? {}) as Record<string, any>;
   const responsavel = (configBot.responsavelLegal ?? {}) as Record<string, any>;
   const plano = getPlanoSaas(String(configBot.planoId || "inicial"));
@@ -114,6 +117,22 @@ const buildContractData = (empresa: any, settings: any) => {
     "Contratante";
 
   return {
+    NOME_CLIENTE: clienteNome,
+    CPF_CNPJ: responsavel.documentoNumero || "não informado",
+    ENDERECO_COMPLETO: [
+      responsavel.endereco,
+      responsavel.cidade,
+      responsavel.estado,
+      responsavel.cep ? `CEP ${responsavel.cep}` : "",
+    ].filter(Boolean).join(" - ") || "não informado",
+    TELEFONE: responsavel.telefone || empresa?.whatsappNumero || "",
+    EMAIL: responsavel.email || "",
+    PLANO: plano.nome,
+    VALOR_MENSALIDADE: formatCurrencyNumber(plano.mensalidadeCentavos),
+    VALOR_INSTALACAO: formatCurrencyNumber(plano.licencaCentavos),
+    PERIODICIDADE: "Mensal",
+    DATA_ACEITE: new Date().toLocaleDateString("pt-BR"),
+    IP_USUARIO: ipUsuario || "pendente de aceite eletrônico",
     cliente_nome: clienteNome,
     cliente_documento: `${documentoTipo} ${responsavel.documentoNumero || "não informado"}`.trim(),
     responsavel_nome: responsavel.responsavelNome || responsavel.nomeCompleto || clienteNome,
@@ -1340,7 +1359,11 @@ export const configuracoesRouter = router({
       ? (isFallbackAuthEnabled() ? getFallbackEmpresaById(ctx.empresaId) : await getEmpresaById(ctx.empresaId))
       : null;
     const contratoTemplate = (settings as any)?.contratoTemplate || "";
-    const contratoDados = buildContractData(empresa, settings);
+    const forwardedFor = ctx.req.headers["x-forwarded-for"];
+    const ipUsuario = Array.isArray(forwardedFor)
+      ? forwardedFor[0]
+      : forwardedFor?.split(",")[0]?.trim() || ctx.req.ip || "";
+    const contratoDados = buildContractData(empresa, settings, ipUsuario);
     return {
       empresa: settings,
       cliente: empresa,

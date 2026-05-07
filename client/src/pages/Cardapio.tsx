@@ -50,7 +50,6 @@ export default function Cardapio() {
   const isPlatformCatalog = me?.role === "admin" && !me?.empresaId && !me?.isDelegated;
   const { data: itens, isLoading, refetch } = trpc.cardapio.list.useQuery();
   const itensArray = unwrapTrpcArray<typeof itens extends Array<infer T> ? T : any>(itens);
-  const criarItem = trpc.cardapio.create.useMutation({ onSuccess: () => refetch() });
   const updateItem = trpc.cardapio.update.useMutation({ onSuccess: () => refetch() });
   const deleteItem = trpc.cardapio.delete.useMutation({ onSuccess: () => refetch() });
   const ocrMutation = trpc.import.ocr.useMutation();
@@ -58,6 +57,7 @@ export default function Cardapio() {
 
   const [bulkText, setBulkText] = useState("");
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [itemSaving, setItemSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [previewProducts, setPreviewProducts] = useState<ProdutoPreview[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -67,7 +67,7 @@ export default function Cardapio() {
   const previewPanelRef = useRef<HTMLDivElement | null>(null);
   const formPanelRef = useRef<HTMLDivElement | null>(null);
   const bulkSaving = bulkInsertMutation.isLoading || (bulkInsertMutation as any).isPending;
-  const creatingItem = criarItem.isLoading || (criarItem as any).isPending;
+  const creatingItem = itemSaving;
   const itemLabel = isPlatformCatalog ? "Plano" : "Item";
   const catalogTitle = isPlatformCatalog ? "Planos da Plataforma" : "Catálogo de Itens";
   const catalogDescription = isPlatformCatalog
@@ -103,6 +103,30 @@ export default function Cardapio() {
     return Number.isFinite(n) ? Math.round(n * 100) : 0;
   };
 
+  const saveItemRest = async (item: ProdutoPreview & { disponivel?: boolean }) => {
+    const res = await fetch("/api/cardapio", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Erro ao salvar item.");
+    return data;
+  };
+
+  const saveItemsRest = async (items: ProdutoPreview[]) => {
+    const res = await fetch("/api/cardapio/bulk", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Erro ao salvar itens.");
+    return data as { success?: boolean; count?: number };
+  };
+
   const parsePriceToken = (value: string) => {
     const match = value.match(/(?:r\$\s*)?(\d{1,4}(?:[.,]\d{2})|\d+)/i);
     if (!match) return 0;
@@ -133,8 +157,9 @@ export default function Cardapio() {
       return;
     }
 
+    setItemSaving(true);
     try {
-      await criarItem.mutateAsync({
+      await saveItemRest({
         categoria: form.categoria,
         nome: form.nome,
         descricao: form.descricao || undefined,
@@ -150,6 +175,8 @@ export default function Cardapio() {
       const text = error instanceof Error ? error.message : "Erro ao salvar item.";
       setStatusMessage({ type: "error", text });
       toast.error(text);
+    } finally {
+      setItemSaving(false);
     }
   };
 
@@ -293,7 +320,7 @@ export default function Cardapio() {
         toast.error(text);
         return;
       }
-      const result = await bulkInsertMutation.mutateAsync(products);
+      const result = await saveItemsRest(products);
       await refetch();
       setBulkText("");
       const text = `${result.count || products.length} itens salvos no catálogo.`;
@@ -396,8 +423,9 @@ export default function Cardapio() {
       return;
     }
 
+    setBulkLoading(true);
     try {
-      const result = await bulkInsertMutation.mutateAsync(validos);
+      const result = await saveItemsRest(validos);
       await refetch();
       const text = `${result.count || validos.length} itens salvos no catálogo.`;
       setStatusMessage({ type: "success", text });
@@ -410,6 +438,8 @@ export default function Cardapio() {
       const text = error instanceof Error ? error.message : "Erro ao salvar itens.";
       setStatusMessage({ type: "error", text });
       toast.error(text);
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -591,9 +621,9 @@ bg-background">
                     onClick={savePreviewProducts}
                     size="lg"
                     className="bg-emerald-600 text-white hover:bg-emerald-700"
-                    disabled={bulkSaving || previewProducts.length === 0}
+                    disabled={bulkLoading || bulkSaving || previewProducts.length === 0}
                   >
-                    {bulkSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {(bulkLoading || bulkSaving) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                     Salvar {previewProducts.length} itens
                   </Button>
 

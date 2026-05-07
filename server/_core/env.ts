@@ -15,4 +15,7 @@ export const ENV = {
   // Forge/Gemini (fallback)
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  infinitePayHandle: process.env.INFINITEPAY_HANDLE ?? "denisdalmazo",
+  infinitePayBaseUrl: process.env.INFINITEPAY_BASE_URL ?? "https://api.checkout.infinitepay.io",
+  publicAppUrl: process.env.APP_URL ?? process.env.PUBLIC_APP_URL ?? "https://crm-whatsapp-saas-237342297859.us-central1.run.app",
 };

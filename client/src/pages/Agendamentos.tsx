@@ -10,6 +10,7 @@ import {
   Video, Phone, User, AlertCircle, RefreshCw
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { toast } from "sonner";
 
 const STATUS_CONFIG = {
   agendado: { label: "Agendado", color: "text-blue-500", bg: "bg-blue-500/10" },
@@ -41,20 +42,30 @@ export default function Agendamentos() {
 
   const token = localStorage.getItem("auth_token") || "";
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const apiFetch = (url: string, init?: RequestInit) =>
+    fetch(url, { credentials: "include", ...(init || {}), headers: { ...headers, ...(init?.headers || {}) } });
 
   // Verifica status Google Calendar
   const verificarGoogleCalendar = async () => {
     setGcStatus("carregando");
-    const r = await fetch("/api/google/status", { headers });
+    const r = await apiFetch("/api/google/status");
+    if (!r.ok) {
+      setGcStatus("desconectado");
+      return;
+    }
     const data = await r.json();
     setGcStatus(data.conectado ? "conectado" : "desconectado");
   };
 
   // Conectar Google Calendar
   const conectarGoogle = async () => {
-    const r = await fetch("/api/google/auth-url", { headers });
+    const r = await apiFetch("/api/google/auth-url");
     const data = await r.json();
-    window.open(data.url, "_blank");
+    if (!r.ok || !data.url) {
+      toast.error(data.error || "Não foi possível gerar o link do Google Calendar");
+      return;
+    }
+    window.location.href = data.url;
     setTimeout(verificarGoogleCalendar, 5000);
   };
 
@@ -62,15 +73,21 @@ export default function Agendamentos() {
   const buscarHorarios = async () => {
     if (!dataBusca) return;
     setBuscandoHorarios(true);
-    const r = await fetch(`/api/google/horarios-livres?data=${dataBusca}&duracao=60`, { headers });
-    const data = await r.json();
-    setHorariosLivres(data.horarios || []);
-    setBuscandoHorarios(false);
+    try {
+      const r = await apiFetch(`/api/google/horarios-livres?data=${dataBusca}&duracao=60`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Erro ao buscar horários");
+      setHorariosLivres(data.horarios || []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao buscar horários");
+    } finally {
+      setBuscandoHorarios(false);
+    }
   };
 
   // Carregar contatos de notificação
   const carregarContatos = async () => {
-    const r = await fetch("/api/notificacoes/contatos", { headers });
+    const r = await apiFetch("/api/notificacoes/contatos");
     const data = await r.json();
     setContatos(Array.isArray(data) ? data : []);
   };
@@ -79,7 +96,7 @@ export default function Agendamentos() {
   const adicionarContato = async () => {
     if (!novoContato.nome || !novoContato.whatsapp) return;
     setSalvandoContato(true);
-    await fetch("/api/notificacoes/contatos", {
+    await apiFetch("/api/notificacoes/contatos", {
       method: "POST", headers,
       body: JSON.stringify({ ...novoContato, eventos: ["agendamento", "pedido", "cancelamento", "novo_cliente"] }),
     });
@@ -90,7 +107,7 @@ export default function Agendamentos() {
 
   // Remover contato
   const removerContato = async (id: number) => {
-    await fetch(`/api/notificacoes/contatos/${id}`, { method: "DELETE", headers });
+    await apiFetch(`/api/notificacoes/contatos/${id}`, { method: "DELETE" });
     await carregarContatos();
   };
 

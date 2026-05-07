@@ -73,8 +73,10 @@ export const empresaProcedure = t.procedure.use(
       });
     }
 
+    const empresaId = ctx.empresaId ?? ctx.user.empresaId;
+
     // Usuário de empresa precisa ter empresa_id
-    if (!ctx.user.empresaId) {
+    if (!empresaId) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: "Usuário não está vinculado a nenhuma empresa",
@@ -84,8 +86,11 @@ export const empresaProcedure = t.procedure.use(
     return next({
       ctx: {
         ...ctx,
-        user: ctx.user,
-        empresaId: ctx.user.empresaId,
+        user: {
+          ...ctx.user,
+          empresaId,
+        },
+        empresaId,
       },
     });
   }),

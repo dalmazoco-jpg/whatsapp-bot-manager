@@ -16,6 +16,92 @@ export const empresas = pgTable("empresas", {
 export type Empresa = typeof empresas.$inferSelect;
 export type InsertEmpresa = typeof empresas.$inferInsert;
 
+export const planos = pgTable("planos", {
+  id: text("id").primaryKey(),
+  nome: text("nome").notNull(),
+  valorLicenca: integer("valor_licenca").notNull(),
+  valorMensalidade: integer("valor_mensalidade").notNull(),
+  recursos: jsonb("recursos"),
+  modules: jsonb("modules"),
+  ativo: boolean("ativo").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type Plano = typeof planos.$inferSelect;
+
+export const faturas = pgTable("faturas", {
+  id: serial("id").primaryKey(),
+  empresaId: integer("empresa_id").references(() => empresas.id, { onDelete: "cascade" }),
+  planoId: text("plano_id").references(() => planos.id),
+  tipo: text("tipo").default("mensalidade").notNull(),
+  valor: integer("valor").notNull(),
+  status: text("status").default("pendente").notNull(),
+  dataVencimento: timestamp("data_vencimento"),
+  dataPagamento: timestamp("data_pagamento"),
+  gateway: text("gateway").default("infinitepay").notNull(),
+  orderNsu: text("order_nsu"),
+  slug: text("slug"),
+  transactionId: text("transaction_id"),
+  paymentLink: text("payment_link"),
+  receiptUrl: text("receipt_url"),
+  nfStatus: text("nf_status").default("pendente").notNull(),
+  nfUrl: text("nf_url"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type Fatura = typeof faturas.$inferSelect;
+export type InsertFatura = typeof faturas.$inferInsert;
+
+export const pagamentos = pgTable("pagamentos", {
+  id: serial("id").primaryKey(),
+  faturaId: integer("fatura_id").references(() => faturas.id, { onDelete: "cascade" }),
+  empresaId: integer("empresa_id").references(() => empresas.id, { onDelete: "cascade" }),
+  valor: integer("valor").notNull(),
+  status: text("status").default("pendente").notNull(),
+  gateway: text("gateway").default("infinitepay").notNull(),
+  orderNsu: text("order_nsu"),
+  transactionId: text("transaction_id"),
+  slug: text("slug"),
+  captureMethod: text("capture_method"),
+  paidAmount: integer("paid_amount"),
+  receiptUrl: text("receipt_url"),
+  payload: jsonb("payload"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type Pagamento = typeof pagamentos.$inferSelect;
+
+export const licencas = pgTable("licencas", {
+  id: serial("id").primaryKey(),
+  empresaId: integer("empresa_id").notNull().unique().references(() => empresas.id, { onDelete: "cascade" }),
+  planoId: text("plano_id").references(() => planos.id),
+  licencaAtiva: boolean("licenca_ativa").default(false).notNull(),
+  licencaExpira: timestamp("licenca_expira"),
+  ultimoPagamentoId: integer("ultimo_pagamento_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type Licenca = typeof licencas.$inferSelect;
+
+export const platformSettings = pgTable("platform_settings", {
+  id: text("id").primaryKey(),
+  nome: text("nome").notNull(),
+  razaoSocial: text("razao_social"),
+  cnpj: text("cnpj"),
+  naturezaJuridica: text("natureza_juridica"),
+  endereco: text("endereco"),
+  telefone: text("telefone"),
+  whatsappNumero: text("whatsapp_numero"),
+  email: text("email"),
+  cnae: text("cnae"),
+  configIa: jsonb("config_ia"),
+  contratoTemplate: text("contrato_template"),
+  planosCustom: jsonb("planos_custom"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PlatformSettings = typeof platformSettings.$inferSelect;
+
 export const usuarios = pgTable("usuarios", {
   id: serial("id").primaryKey(),
   empresaId: integer("empresa_id").references(() => empresas.id, { onDelete: "cascade" }),
@@ -28,6 +114,8 @@ export const usuarios = pgTable("usuarios", {
 });
 export type Usuario = typeof usuarios.$inferSelect;
 export type InsertUsuario = typeof usuarios.$inferInsert;
+export type User = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;
 
 export const sessoesWhatsapp = pgTable("sessoes_whatsapp", {
   id: serial("id").primaryKey(),
@@ -187,3 +275,14 @@ export const contatosNotificacao = pgTable("contatos_notificacao", {
 });
 export type ContatoNotificacao = typeof contatosNotificacao.$inferSelect;
 export type InsertContatoNotificacao = typeof contatosNotificacao.$inferInsert;
+
+export const googleCalendarTokens = pgTable("google_calendar_tokens", {
+  id: serial("id").primaryKey(),
+  empresaId: integer("empresa_id").notNull().unique().references(() => empresas.id, { onDelete: "cascade" }),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  tokenExpiry: timestamp("token_expiry"),
+  calendarId: text("calendar_id").default("primary").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

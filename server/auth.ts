@@ -238,8 +238,8 @@ export async function handleLogout(req: Request, res: Response) {
  */
 export async function handleMe(req: Request, res: Response) {
   const token =
-    req.cookies?.app_session_token ||
-    req.headers.authorization?.replace("Bearer ", "");
+    req.headers.authorization?.replace("Bearer ", "") ||
+    req.cookies?.app_session_token;
 
   if (!token) {
     return res.status(401).json({ error: "Não autenticado" });
@@ -264,12 +264,14 @@ export async function handleMe(req: Request, res: Response) {
     return res.status(401).json({ error: "Usuário não encontrado" });
   }
 
+  const empresaId = payload.delegatedEmpresaId ?? usuario.empresaId ?? payload.empresaId ?? null;
+
   return res.json({
     id: usuario.id,
     nome: usuario.nome,
     email: usuario.email,
     role: usuario.role,
-    empresaId: usuario.empresaId,
+    empresaId,
   });
 }
 

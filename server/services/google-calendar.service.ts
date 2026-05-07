@@ -1,6 +1,7 @@
 import { google } from "googleapis";
-import { getDb } from "../db";
+import { getDb, getPlatformSettings, updatePlatformSettings } from "../db";
 import { eq } from "drizzle-orm";
+import { getFallbackPlatformSettings, isFallbackAuthEnabled, updateFallbackPlatformSettings } from "../fallback-store";
 
 // ── OAuth2 Client ─────────────────────────────────────────────
 export function getOAuth2Client() {
@@ -25,10 +26,64 @@ export function getAuthUrl(empresaId: number): string {
   });
 }
 
+function isPlatformCalendar(empresaId: number) {
+  return empresaId === 0;
+}
+
+async function getPlatformCalendarToken() {
+  const settings = isFallbackAuthEnabled()
+    ? getFallbackPlatformSettings()
+    : await getPlatformSettings();
+  return (((settings as any)?.configIa as any)?.googleCalendar ?? null) as {
+    access_token?: string;
+    refresh_token?: string;
+    token_expiry?: string;
+    calendar_id?: string;
+  } | null;
+}
+
+async function savePlatformCalendarToken(token: {
+  access_token?: string | null;
+  refresh_token?: string | null;
+  token_expiry?: string | null;
+  calendar_id?: string | null;
+}) {
+  const settings = isFallbackAuthEnabled()
+    ? getFallbackPlatformSettings()
+    : await getPlatformSettings();
+  const configIa = (((settings as any)?.configIa as any) ?? {}) as Record<string, any>;
+  const current = configIa.googleCalendar ?? {};
+  const nextConfigIa = {
+    ...configIa,
+    googleCalendar: {
+      ...current,
+      ...token,
+      calendar_id: token.calendar_id || current.calendar_id || "primary",
+      updated_at: new Date().toISOString(),
+    },
+  };
+  if (isFallbackAuthEnabled()) {
+    updateFallbackPlatformSettings({ configIa: nextConfigIa } as any);
+    return;
+  }
+  await updatePlatformSettings({ configIa: nextConfigIa } as any);
+}
+
 // ── Salva tokens no banco ─────────────────────────────────────
 export async function saveTokens(empresaId: number, code: string): Promise<void> {
   const oauth2 = getOAuth2Client();
   const { tokens } = await oauth2.getToken(code);
+
+  if (isPlatformCalendar(empresaId)) {
+    await savePlatformCalendarToken({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+      calendar_id: "primary",
+    });
+    return;
+  }
+
   const db = getDb();
   await db.execute(`
     INSERT INTO google_calendar_tokens (empresa_id, access_token, refresh_token, token_expiry)
@@ -43,6 +98,29 @@ export async function saveTokens(empresaId: number, code: string): Promise<void>
 
 // ── Carrega cliente autenticado para uma empresa ──────────────
 export async function getAuthenticatedClient(empresaId: number) {
+  if (isPlatformCalendar(empresaId)) {
+    const token = await getPlatformCalendarToken();
+    if (!token?.access_token && !token?.refresh_token) return null;
+
+    const oauth2 = getOAuth2Client();
+    oauth2.setCredentials({
+      access_token: token.access_token,
+      refresh_token: token.refresh_token,
+      expiry_date: token.token_expiry ? new Date(token.token_expiry).getTime() : undefined,
+    });
+
+    oauth2.on("tokens", async (newTokens) => {
+      await savePlatformCalendarToken({
+        access_token: newTokens.access_token,
+        refresh_token: newTokens.refresh_token || token.refresh_token,
+        token_expiry: newTokens.expiry_date ? new Date(newTokens.expiry_date).toISOString() : token.token_expiry,
+        calendar_id: token.calendar_id || "primary",
+      });
+    });
+
+    return { oauth2, calendarId: token.calendar_id || "primary" };
+  }
+
   const db = getDb();
   const rows = await db.execute(
     `SELECT * FROM google_calendar_tokens WHERE empresa_id = ${empresaId} LIMIT 1`
@@ -213,7 +291,7 @@ export async function criarEvento(
 
     return {
       eventId: response.data.id!,
-      meetLink: response.data.conferenceData?.entryPoints?.[0]?.uri,
+      meetLink: response.data.conferenceData?.entryPoints?.[0]?.uri ?? undefined,
       htmlLink: response.data.htmlLink || undefined,
     };
   } catch (err) {
@@ -267,6 +345,11 @@ export async function cancelarEvento(empresaId: number, eventId: string): Promis
 
 // ── Verifica se empresa tem Google Calendar conectado ─────────
 export async function temGoogleCalendar(empresaId: number): Promise<boolean> {
+  if (isPlatformCalendar(empresaId)) {
+    const token = await getPlatformCalendarToken();
+    return !!(token?.access_token || token?.refresh_token);
+  }
+
   const db = getDb();
   const rows = await db.execute(
     `SELECT id FROM google_calendar_tokens WHERE empresa_id = ${empresaId} LIMIT 1`

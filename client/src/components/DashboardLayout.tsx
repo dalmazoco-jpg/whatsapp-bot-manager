@@ -16,38 +16,29 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
+import { APP_MODULES, getEmpresaModules, MASTER_ADMIN_EMAIL } from "@/lib/modules";
 import { unwrapTrpcData } from "@/lib/trpcData";
 import {
-  LayoutDashboard,
   LogOut,
-  PanelLeft,
-  Users,
   ShoppingBag,
   Calendar,
-  Settings,
-  Smartphone,
   UtensilsCrossed,
   Shield,
   MessageSquare,
-  TrendingUp,
   Package,
   AlertCircle,
   ArrowLeft,
 } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 260;
-const MIN_WIDTH = 200;
-const MAX_WIDTH = 400;
-
 export default function DashboardLayout({
   children,
 }: {
@@ -64,7 +55,7 @@ export default function DashboardLayout({
     role: string;
     empresaId: number | null;
     isDelegated?: boolean;
-    empresa?: { nome: string; ramo?: string } | null;
+    empresa?: { nome: string; ramo?: string; configBot?: unknown } | null;
   } | null>(meData);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -85,8 +76,10 @@ export default function DashboardLayout({
   }
 
   const isAdmin = me.role === "admin";
+  const isMasterAdmin = isAdmin && me.email?.toLowerCase() === MASTER_ADMIN_EMAIL;
   const isDelegated = me.isDelegated || false;
   const ramo = me.empresa?.ramo || "outro";
+  const enabledModules = new Set(getEmpresaModules(me.empresa));
 
   // Rótulos dinâmicos por ramo
   const labels: Record<string, { cardapio: string; icon: any }> = {
@@ -99,18 +92,17 @@ export default function DashboardLayout({
 
   const currentLabels = labels[ramo as keyof typeof labels] || labels.outro;
 
-  // Menu items baseados no role e no ramo
+  const moduleMenuItems = APP_MODULES
+    .filter((module) => isAdmin || enabledModules.has(module.id))
+    .map((module) => ({
+      icon: module.id === "cardapio" ? currentLabels.icon : module.icon,
+      label: module.id === "cardapio" ? currentLabels.cardapio : module.label,
+      path: module.path,
+    }));
+
   const menuItems = [
-    { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-    ...(isAdmin ? [{ icon: Shield, label: "Admin", path: "/admin" }] : []),
-    { icon: Smartphone, label: "WhatsApp", path: "/whatsapp" },
-    { icon: currentLabels.icon, label: currentLabels.cardapio, path: "/cardapio" },
-    { icon: Package, label: "Apresentação", path: "/dashboard/apresentacao" },
-    { icon: Users, label: "Clientes", path: "/clientes" },
-    { icon: ShoppingBag, label: "Pedidos", path: "/pedidos" },
-    { icon: Calendar, label: "Agendamentos", path: "/agendamentos" },
-    { icon: TrendingUp, label: "Financeiro", path: "/financeiro" }, // Novo item
-    { icon: Settings, label: "Configurações", path: "/configuracoes" },
+    ...(isMasterAdmin ? [{ icon: Shield, label: "Admin", path: "/admin" }] : []),
+    ...moduleMenuItems,
   ];
 
 
@@ -125,7 +117,6 @@ export default function DashboardLayout({
       <DashboardLayoutContent
         me={me}
         menuItems={menuItems}
-        setSidebarWidth={setSidebarWidth}
         isDelegated={isDelegated}
       >
         {children}
@@ -138,9 +129,8 @@ type MenuItem = { icon: React.ComponentType<{ className?: string }>; label: stri
 
 type DashboardLayoutContentProps = {
   children: React.ReactNode;
-  me: { id: number; nome: string; email: string; role: string; empresaId: number | null; isDelegated?: boolean; empresa?: { nome: string } };
+  me: { id: number; nome: string; email: string; role: string; empresaId: number | null; isDelegated?: boolean; empresa?: { nome: string; ramo?: string } | null };
   menuItems: MenuItem[];
-  setSidebarWidth: (width: number) => void;
   isDelegated: boolean;
 };
 
@@ -148,51 +138,11 @@ function DashboardLayoutContent({
   children,
   me,
   menuItems,
-  setSidebarWidth,
   isDelegated,
 }: DashboardLayoutContentProps) {
   const [location, setLocation] = useLocation();
-  const { state, toggleSidebar } = useSidebar();
-  const isCollapsed = state === "collapsed";
-  const [isResizing, setIsResizing] = useState(false);
-  const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (isCollapsed) {
-      setIsResizing(false);
-    }
-  }, [isCollapsed]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
-      const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
-        setSidebarWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    }
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-  }, [isResizing, setSidebarWidth]);
 
   const handleLogout = async () => {
     try {
@@ -206,29 +156,18 @@ function DashboardLayoutContent({
 
   return (
     <>
-      <div className="relative" ref={sidebarRef}>
+      <div className="relative">
         <Sidebar
-          collapsible="icon"
+          collapsible="none"
           className="border-r-0"
-          disableTransition={isResizing}
+          disableTransition
         >
           <SidebarHeader className="h-16 justify-center">
-            <div className="flex items-center gap-3 px-2 transition-all w-full">
-              <button
-                onClick={toggleSidebar}
-                className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none shrink-0"
-                aria-label="Toggle navigation"
-              >
-                <PanelLeft className="h-4 w-4 text-muted-foreground" />
-              </button>
-              {!isCollapsed ? (
-                <div className="flex items-center gap-2 min-w-0">
-                  <MessageSquare className="w-5 h-5 text-emerald-500 shrink-0" />
-                  <span className="font-semibold tracking-tight truncate">
-                    Bot Manager
-                  </span>
-                </div>
-              ) : null}
+            <div className="flex items-center gap-3 px-2 transition-colors w-full">
+              <MessageSquare className="w-5 h-5 text-emerald-500 shrink-0" />
+              <span className="font-semibold tracking-tight truncate">
+                Bot Manager
+              </span>
             </div>
           </SidebarHeader>
 
@@ -242,7 +181,7 @@ function DashboardLayoutContent({
                       isActive={isActive}
                       onClick={() => setLocation(item.path)}
                       tooltip={item.label}
-                      className="h-10 transition-all font-normal"
+                      className="h-10 transition-colors font-normal"
                     >
                       <item.icon
                         className={`h-4 w-4 ${isActive ? "text-emerald-500" : ""}`}
@@ -286,14 +225,6 @@ function DashboardLayoutContent({
             </DropdownMenu>
           </SidebarFooter>
         </Sidebar>
-        <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-emerald-500/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
-          onMouseDown={() => {
-            if (isCollapsed) return;
-            setIsResizing(true);
-          }}
-          style={{ zIndex: 50 }}
-        />
       </div>
 
       <SidebarInset>

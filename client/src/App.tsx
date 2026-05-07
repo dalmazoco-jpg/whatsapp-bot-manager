@@ -19,6 +19,7 @@ import Apresentacao from "./pages/Apresentacao";
 import PublicApresentacao from "./pages/PublicApresentacao";
 import DashboardLayout from "./components/DashboardLayout";
 import { trpc } from "./lib/trpc";
+import { APP_MODULES, getEmpresaModules, MASTER_ADMIN_EMAIL } from "./lib/modules";
 import { unwrapTrpcData } from "./lib/trpcData";
 import { useState, useCallback } from "react";
 
@@ -41,7 +42,7 @@ function Router() {
     role: string;
     empresaId: number | null;
     isDelegated?: boolean;
-    empresa?: { nome: string; ramo?: string } | null;
+    empresa?: { nome: string; ramo?: string; configBot?: unknown; ativo?: boolean; licencaExpira?: string | Date | null } | null;
   } | null>(meData);
 
   const [forceLogin, setForceLogin] = useState(false);
@@ -74,8 +75,53 @@ function Router() {
   }
 
   const isAdmin = me?.role === "admin";
+  const isMasterAdmin = isAdmin && me?.email?.toLowerCase() === MASTER_ADMIN_EMAIL;
+  const enabledModules = new Set(getEmpresaModules(me?.empresa));
+  const isRequiredOperationalModule = (moduleId: string) => ["dashboard", "whatsapp", "configuracoes"].includes(moduleId);
+  const licenseActive = isAdmin || !me?.empresa || (
+    me.empresa.ativo !== false &&
+    (!me.empresa.licencaExpira || new Date(me.empresa.licencaExpira).getTime() >= Date.now())
+  );
+  const ModuleOnly = ({ moduleId, children }: { moduleId: string; children: React.ReactNode }) => {
+    if (!licenseActive && !isRequiredOperationalModule(moduleId)) {
+      return (
+        <DashboardLayout>
+          <div className="container mx-auto px-4 py-12">
+            <div className="max-w-xl rounded-lg border border-yellow-500/40 bg-yellow-500/5 p-6">
+              <h1 className="typography-h2 mb-2">Licença vencida</h1>
+              <p className="text-muted-foreground mb-4">
+                Regularize a mensalidade para liberar novamente os módulos do plano.
+              </p>
+              <button
+                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                onClick={() => setLocation("/configuracoes")}
+              >
+                Ir para pagamento
+              </button>
+            </div>
+          </div>
+        </DashboardLayout>
+      );
+    }
+
+    if (isAdmin || enabledModules.has(moduleId as any)) return <>{children}</>;
+
+    const moduleLabel = APP_MODULES.find((module) => module.id === moduleId)?.label || "módulo";
+    return (
+      <DashboardLayout>
+        <div className="container mx-auto px-4 py-12">
+          <div className="max-w-xl rounded-lg border border-border bg-background p-6">
+            <h1 className="typography-h2 mb-2">Módulo não liberado</h1>
+            <p className="text-muted-foreground">
+              O módulo {moduleLabel} não faz parte do plano desta empresa.
+            </p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  };
   const AdminOnly = ({ children }: { children: React.ReactNode }) => {
-    if (isAdmin) return <>{children}</>;
+    if (isMasterAdmin) return <>{children}</>;
 
     return (
       <DashboardLayout>
@@ -84,7 +130,7 @@ function Router() {
             <h1 className="typography-h2 mb-2">Acesso de administrador necessário</h1>
             <p className="text-muted-foreground mb-4">
               Você está logado como {me?.email || "usuário"} com perfil {me?.role || "desconhecido"}.
-              Saia dessa conta e entre com o master admin para criar empresas e clientes.
+              O painel admin fica disponível apenas para {MASTER_ADMIN_EMAIL}.
             </p>
           </div>
         </div>
@@ -105,13 +151,13 @@ function Router() {
 
       {/* Empresa pages */}
       <Route path="/whatsapp" component={ConexaoWhatsApp} />
-      <Route path="/cardapio" component={Cardapio} />
-      <Route path="/dashboard/apresentacao" component={Apresentacao} />
+      <Route path="/cardapio" component={() => <ModuleOnly moduleId="cardapio"><Cardapio /></ModuleOnly>} />
+      <Route path="/dashboard/apresentacao" component={() => <ModuleOnly moduleId="apresentacao"><Apresentacao /></ModuleOnly>} />
       <Route path="/public/:slug" component={PublicApresentacao} />
-      <Route path="/clientes" component={Clientes} />
-      <Route path="/pedidos" component={Pedidos} />
-      <Route path="/agendamentos" component={Agendamentos} />
-      <Route path="/financeiro" component={Financeiro} />
+      <Route path="/clientes" component={() => <ModuleOnly moduleId="clientes"><Clientes /></ModuleOnly>} />
+      <Route path="/pedidos" component={() => <ModuleOnly moduleId="pedidos"><Pedidos /></ModuleOnly>} />
+      <Route path="/agendamentos" component={() => <ModuleOnly moduleId="agendamentos"><Agendamentos /></ModuleOnly>} />
+      <Route path="/financeiro" component={() => <ModuleOnly moduleId="financeiro"><Financeiro /></ModuleOnly>} />
       <Route path="/configuracoes" component={Configuracoes} />
 
       {/* 404 */}

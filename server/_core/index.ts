@@ -13,8 +13,9 @@ import { handleLogin, handleRegister, handleLogout, handleMe, handleForgotPasswo
 import { registerWhatsAppRoutes } from "../routes/whatsapp.sse";
 import { registerApresentacaoRoutes } from "../routes/apresentacao.routes";
 import { registerGoogleCalendarRoutes } from "../routes/google-calendar.routes";
+import { registerPagamentosRoutes } from "../routes/pagamentos.routes";
 import { restoreActiveSessions } from "../services/baileys.service";
-import { ensureApresentacaoConfigTable, ensureDefaultAdminUser } from "../db";
+import { ensureApresentacaoConfigTable, ensureBillingTables, ensureDefaultAdminUser, ensureIntegrationTables } from "../db";
 import { ENV } from "./env";
 
 
@@ -43,6 +44,8 @@ async function startServer() {
   const server = createServer(app);
   try {
     await ensureApresentacaoConfigTable();
+    await ensureBillingTables();
+    await ensureIntegrationTables();
     await ensureDefaultAdminUser();
   } catch (error) {
     if (process.env.NODE_ENV !== "development" && !ENV.localAuthFallback) throw error;
@@ -82,6 +85,7 @@ async function startServer() {
   registerWhatsAppRoutes(app);
   registerApresentacaoRoutes(app);
   registerGoogleCalendarRoutes(app);
+  registerPagamentosRoutes(app);
 
   // ============================================================
   // tRPC API

@@ -33,11 +33,13 @@ export const appRouter = router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
       
+      const effectiveEmpresaId = (opts.ctx as TrpcContext).empresaId || opts.ctx.user.empresaId;
+
       let empresa = null;
-      if (opts.ctx.user.empresaId) {
+      if (effectiveEmpresaId) {
         empresa = isFallbackAuthEnabled()
-          ? getFallbackEmpresaById(opts.ctx.user.empresaId)
-          : await getEmpresaById(opts.ctx.user.empresaId);
+          ? getFallbackEmpresaById(effectiveEmpresaId)
+          : await getEmpresaById(effectiveEmpresaId);
       }
 
       // Detectar se está em modo delegado (admin acessando outra empresa)
@@ -48,13 +50,16 @@ export const appRouter = router({
         nome: opts.ctx.user.nome || "Usuário",
         email: opts.ctx.user.email,
         role: opts.ctx.user.role,
-        empresaId: opts.ctx.user.empresaId,
+        empresaId: effectiveEmpresaId,
         isDelegated,
         empresa: empresa ? {
           id: empresa.id,
           nome: empresa.nome || "Empresa",
           tipo: empresa.tipo || "outro",
           ramo: (empresa as any).ramo || empresa.tipo || "outro",
+          configBot: (empresa as any).configBot || null,
+          ativo: (empresa as any).ativo ?? true,
+          licencaExpira: (empresa as any).licencaExpira ?? null,
         } : null,
       };
 

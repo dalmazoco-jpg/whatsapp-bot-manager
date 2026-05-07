@@ -8,6 +8,7 @@ import makeWASocket, {
   BufferJSON,
   fetchLatestBaileysVersion,
   Browsers,
+  useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import * as QRCode from "qrcode";
@@ -19,7 +20,11 @@ import {
 } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { handleIncomingMessage } from "./ia.service";
+import { handlePlatformSalesMessage } from "./platform-sales.service";
 import pino from "pino";
+import { rm } from "fs/promises";
+import { ENV } from "../_core/env";
+import { PLATFORM_WHATSAPP_EMPRESA_ID } from "../../shared/platform";
 
 // ── Auth State armazenado no Supabase ───────────────────────────────────────
 async function useSupabaseAuthState(empresaId: number): Promise<{
@@ -70,7 +75,7 @@ async function useSupabaseAuthState(empresaId: number): Promise<{
     creds,
     keys: {
       get: async (type: string, ids: string[]) => {
-        const data: Record<string, unknown> = {};
+        const data: any = {};
         await Promise.all(
           ids.map(async (id) => {
             let value = await readData(`${type}-${id}`);
@@ -80,7 +85,7 @@ async function useSupabaseAuthState(empresaId: number): Promise<{
             data[id] = value;
           })
         );
-        return data as Awaited<ReturnType<SignalDataTypeMap[keyof SignalDataTypeMap]["get"]>>;
+        return data;
       },
       set: async (data: Record<string, Record<string, unknown>>) => {
         const tasks: Promise<void>[] = [];
@@ -105,8 +110,55 @@ async function useSupabaseAuthState(empresaId: number): Promise<{
 
 // ── Mapa de sockets ativos ───────────────────────────────────────────────────
 const activeSockets = new Map<number, WASocket>();
+const transientSessions = new Map<number, {
+  status: "desconectado" | "qr_pendente" | "conectado";
+  qr?: string | null;
+  connectedAt?: Date | null;
+}>();
 export const baileysEvents = new EventEmitter();
 baileysEvents.setMaxListeners(100);
+
+function shouldUseTransientWhatsAppState(empresaId: number) {
+  return empresaId === PLATFORM_WHATSAPP_EMPRESA_ID || ENV.localAuthFallback || !ENV.databaseUrl;
+}
+
+async function getAuthState(empresaId: number) {
+  if (shouldUseTransientWhatsAppState(empresaId)) {
+    return useMultiFileAuthState(`/tmp/bot-manager-baileys-${empresaId}`);
+  }
+
+  return useSupabaseAuthState(empresaId);
+}
+
+async function saveSessionSnapshot(
+  empresaId: number,
+  snapshot: {
+    status: "desconectado" | "qr_pendente" | "conectado";
+    qr?: string | null;
+    connectedAt?: Date | null;
+  }
+) {
+  transientSessions.set(empresaId, snapshot);
+  if (shouldUseTransientWhatsAppState(empresaId)) return;
+
+  const db = getDb();
+  const existing = await db.select().from(sessoesWhatsapp).where(eq(sessoesWhatsapp.empresaId, empresaId)).limit(1);
+  if (existing.length > 0) {
+    await db.update(sessoesWhatsapp).set({
+      status: snapshot.status,
+      ultimoQr: snapshot.qr ?? null,
+      connectedAt: snapshot.connectedAt ?? existing[0].connectedAt,
+      updatedAt: new Date(),
+    }).where(eq(sessoesWhatsapp.empresaId, empresaId));
+  } else {
+    await db.insert(sessoesWhatsapp).values({
+      empresaId,
+      status: snapshot.status,
+      ultimoQr: snapshot.qr ?? null,
+      connectedAt: snapshot.connectedAt ?? null,
+    } as InsertSessaoWhatsapp);
+  }
+}
 
 // ── Iniciar sessão ───────────────────────────────────────────────────────────
 export async function startBaileysSession(empresaId: number): Promise<void> {
@@ -120,7 +172,7 @@ export async function startBaileysSession(empresaId: number): Promise<void> {
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`[Baileys] Usando WA v${version.join(".")} (isLatest: ${isLatest})`);
 
-  const { state, saveCreds } = await useSupabaseAuthState(empresaId);
+  const { state, saveCreds } = await getAuthState(empresaId);
   const logger = pino({ level: "silent" });
 
   const sock = makeWASocket({
@@ -143,21 +195,14 @@ export async function startBaileysSession(empresaId: number): Promise<void> {
       console.log(`[Baileys] QR gerado para empresa ${empresaId}`);
       const qrBase64 = await QRCode.toDataURL(qr, { width: 300 });
 
-      const db = getDb();
-      const existing = await db.select().from(sessoesWhatsapp).where(eq(sessoesWhatsapp.empresaId, empresaId)).limit(1);
-      if (existing.length > 0) {
-        await db.update(sessoesWhatsapp).set({ status: "qr_pendente", ultimoQr: qrBase64, updatedAt: new Date() }).where(eq(sessoesWhatsapp.empresaId, empresaId));
-      } else {
-        await db.insert(sessoesWhatsapp).values({ empresaId, status: "qr_pendente", ultimoQr: qrBase64 } as InsertSessaoWhatsapp);
-      }
+      await saveSessionSnapshot(empresaId, { status: "qr_pendente", qr: qrBase64 });
 
       baileysEvents.emit(`qr:${empresaId}`, { type: "qr", qr: qrBase64 });
     }
 
     if (connection === "open") {
       console.log(`[Baileys] Empresa ${empresaId} conectada!`);
-      const db = getDb();
-      await db.update(sessoesWhatsapp).set({ status: "conectado", ultimoQr: null, connectedAt: new Date(), updatedAt: new Date() }).where(eq(sessoesWhatsapp.empresaId, empresaId));
+      await saveSessionSnapshot(empresaId, { status: "conectado", qr: null, connectedAt: new Date() });
       baileysEvents.emit(`qr:${empresaId}`, { type: "connected" });
     }
 
@@ -168,13 +213,17 @@ export async function startBaileysSession(empresaId: number): Promise<void> {
       console.log(`[Baileys] Empresa ${empresaId} desconectada (${statusCode}), reconectar: ${shouldReconnect}`);
       activeSockets.delete(empresaId);
 
-      const db = getDb();
-      await db.update(sessoesWhatsapp).set({ status: "desconectado", updatedAt: new Date() }).where(eq(sessoesWhatsapp.empresaId, empresaId));
+      await saveSessionSnapshot(empresaId, { status: "desconectado", qr: null });
       baileysEvents.emit(`qr:${empresaId}`, { type: "disconnected" });
 
       if (statusCode === 405 || statusCode === DisconnectReason.loggedOut) {
         console.log(`[Baileys] Limpando sessão inválida/desconectada da empresa ${empresaId}...`);
-        await db.execute(`DELETE FROM baileys_auth WHERE empresa_id = ${empresaId}`);
+        if (shouldUseTransientWhatsAppState(empresaId)) {
+          await rm(`/tmp/bot-manager-baileys-${empresaId}`, { recursive: true, force: true });
+        } else {
+          const db = getDb();
+          await db.execute(`DELETE FROM baileys_auth WHERE empresa_id = ${empresaId}`);
+        }
       }
 
       if (shouldReconnect) {
@@ -195,7 +244,9 @@ export async function startBaileysSession(empresaId: number): Promise<void> {
       const pushName = msg.pushName || "Cliente";
       console.log(`[Baileys] Empresa ${empresaId} ← ${from}: ${text}`);
       try {
-        const resposta = await handleIncomingMessage(empresaId, from, pushName, text);
+        const resposta = empresaId === PLATFORM_WHATSAPP_EMPRESA_ID
+          ? await handlePlatformSalesMessage(pushName, text)
+          : await handleIncomingMessage(empresaId, from, pushName, text);
         if (resposta) await sock.sendMessage(from, { text: resposta });
       } catch (error) {
         console.error(`[Baileys] Erro ao processar mensagem:`, error);
@@ -211,14 +262,29 @@ export async function stopBaileysSession(empresaId: number): Promise<void> {
     try { await sock.logout(); } catch {}
     activeSockets.delete(empresaId);
   }
-  // Limpar auth do banco
+  await saveSessionSnapshot(empresaId, { status: "desconectado", qr: null });
+  if (shouldUseTransientWhatsAppState(empresaId)) {
+    await rm(`/tmp/bot-manager-baileys-${empresaId}`, { recursive: true, force: true });
+    return;
+  }
   const db = getDb();
   await db.execute(`DELETE FROM baileys_auth WHERE empresa_id = ${empresaId}`);
-  await db.update(sessoesWhatsapp).set({ status: "desconectado", updatedAt: new Date() }).where(eq(sessoesWhatsapp.empresaId, empresaId));
 }
 
 export function getSessionStatus(empresaId: number): "conectado" | "desconectado" {
   return activeSockets.has(empresaId) ? "conectado" : "desconectado";
+}
+
+export function getSessionSnapshot(empresaId: number) {
+  const snapshot = transientSessions.get(empresaId);
+  if (activeSockets.has(empresaId)) {
+    return {
+      status: snapshot?.status === "qr_pendente" ? "qr_pendente" : "conectado",
+      qr: snapshot?.qr ?? null,
+      connectedAt: snapshot?.connectedAt ?? null,
+    };
+  }
+  return snapshot ?? { status: "desconectado" as const, qr: null, connectedAt: null };
 }
 
 export async function sendWhatsAppMessage(empresaId: number, to: string, text: string): Promise<boolean> {

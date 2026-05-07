@@ -1,7 +1,8 @@
 import { trpc } from "@/lib/trpc";
+import { unwrapTrpcData } from "@/lib/trpcData";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { MessageSquare, ShoppingBag, Calendar, TrendingUp, Smartphone, Users } from "lucide-react";
+import { MessageSquare, ShoppingBag, Calendar, TrendingUp, Smartphone, Users, FileText } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Dashboard() {
@@ -10,6 +11,8 @@ export default function Dashboard() {
   const { data: pedidos, error: pedidosError } = trpc.pedidos.list.useQuery();
   const { data: agendamentos = [] } = trpc.agendamentos.list.useQuery();
   const { data: whatsappStatus } = trpc.whatsapp.status.useQuery();
+  const { data: contratoData } = trpc.configuracoes.contrato.useQuery();
+  const contrato = unwrapTrpcData<any>(contratoData);
 
   const { data: financeiro } = trpc.financeiro.stats.useQuery();
 
@@ -172,6 +175,25 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {contrato?.contratoTemplate ? (
+          <Card className="mt-6 border border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                Contrato
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/20 p-4 text-sm">
+                {contrato.contratoTemplate}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Este é o modelo vigente da {contrato.empresa?.nome || "plataforma"} para aceite digital.
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </DashboardLayout>
   );

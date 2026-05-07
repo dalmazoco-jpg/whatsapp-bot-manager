@@ -1,5 +1,7 @@
 import type { Express, Request, Response } from "express";
-import { getPublicApresentacaoDataBySlug } from "../db";
+import { getPublicApresentacaoDataBySlug, getPublicPlatformApresentacaoDataBySlug } from "../db";
+import { getFallbackPublicApresentacaoDataBySlug, getFallbackPublicPlatformApresentacaoDataBySlug, isFallbackAuthEnabled } from "../fallback-store";
+import { PLATFORM_SETTINGS_ID } from "../../shared/platform";
 
 export function registerApresentacaoRoutes(app: Express) {
   app.get("/api/public/apresentacao/:slug", async (req: Request, res: Response) => {
@@ -9,7 +11,13 @@ export function registerApresentacaoRoutes(app: Express) {
     }
 
     try {
-      const data = await getPublicApresentacaoDataBySlug(slug);
+      const data = slug === PLATFORM_SETTINGS_ID
+        ? (isFallbackAuthEnabled()
+            ? getFallbackPublicPlatformApresentacaoDataBySlug(slug)
+            : await getPublicPlatformApresentacaoDataBySlug(slug))
+        : (isFallbackAuthEnabled()
+            ? getFallbackPublicApresentacaoDataBySlug(slug)
+            : await getPublicApresentacaoDataBySlug(slug));
       if (!data) {
         return res.status(404).json({ error: "Página não encontrada" });
       }

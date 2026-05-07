@@ -131,7 +131,7 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
   if (cardapio.length > 0) {
     const tipoCardapio = ["adega", "loja", "mercado", "distribuidora"].includes(ramo) ? "PRODUTOS" : "CARDÁPIO";
     prompt += `${tipoCardapio} DISPONÍVEL:\n`;
-    const categorias = [...new Set(cardapio.map((c) => c.categoria || "Geral"))];
+    const categorias = Array.from(new Set(cardapio.map((c) => c.categoria || "Geral")));
     for (const cat of categorias) {
       prompt += `\n${cat.toUpperCase()}:\n`;
       for (const item of cardapio.filter((c) => (c.categoria || "Geral") === cat && c.disponivel)) {

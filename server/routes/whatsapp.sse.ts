@@ -1,7 +1,16 @@
 import type { Express, Request, Response } from "express";
-import { baileysEvents, startBaileysSession, stopBaileysSession, getSessionStatus } from "../services/baileys.service";
+import { baileysEvents, startBaileysSession, stopBaileysSession, getSessionStatus, getSessionSnapshot } from "../services/baileys.service";
 import { verifyToken } from "../auth";
 import { getSessaoByEmpresaId } from "../db";
+import { MASTER_ADMIN_EMAIL, PLATFORM_WHATSAPP_EMPRESA_ID } from "../../shared/platform";
+
+function canAccessWhatsAppSession(payload: ReturnType<typeof verifyToken>, empresaId: number) {
+  if (!payload) return false;
+  const isMasterPlatform = empresaId === PLATFORM_WHATSAPP_EMPRESA_ID
+    && payload.role === "admin"
+    && payload.email?.toLowerCase() === MASTER_ADMIN_EMAIL;
+  return isMasterPlatform || payload.role === "admin" || payload.empresaId === empresaId;
+}
 
 /**
  * Registra as rotas do WhatsApp (SSE + REST)
@@ -20,8 +29,8 @@ export function registerWhatsAppRoutes(app: Express) {
 
     // Verificar autenticação
     const token =
-      req.cookies?.app_session_token ||
       req.headers.authorization?.replace("Bearer ", "") ||
+      req.cookies?.app_session_token ||
       (req.query.token as string);
 
     if (!token) {
@@ -34,7 +43,7 @@ export function registerWhatsAppRoutes(app: Express) {
     }
 
     // Verificar permissão: admin ou dono da empresa
-    if (payload.role !== "admin" && payload.empresaId !== empresaId) {
+    if (!canAccessWhatsAppSession(payload, empresaId)) {
       return res.status(403).json({ error: "Sem permissão" });
     }
 
@@ -47,8 +56,14 @@ export function registerWhatsAppRoutes(app: Express) {
     });
 
     // Enviar status inicial
-    const sessao = await getSessaoByEmpresaId(empresaId);
-    if (sessao) {
+    const snapshot = getSessionSnapshot(empresaId);
+    const sessao = empresaId === PLATFORM_WHATSAPP_EMPRESA_ID ? null : await getSessaoByEmpresaId(empresaId);
+    if (snapshot.status !== "desconectado") {
+      res.write(`data: ${JSON.stringify({ type: "status", status: snapshot.status })}\n\n`);
+      if (snapshot.status === "qr_pendente" && snapshot.qr) {
+        res.write(`data: ${JSON.stringify({ type: "qr", qr: snapshot.qr })}\n\n`);
+      }
+    } else if (sessao) {
       res.write(`data: ${JSON.stringify({ type: "status", status: sessao.status })}\n\n`);
 
       // Se já tem QR pendente, enviar imediatamente
@@ -92,8 +107,8 @@ export function registerWhatsAppRoutes(app: Express) {
 
     // Verificar autenticação
     const token =
-      req.cookies?.app_session_token ||
-      req.headers.authorization?.replace("Bearer ", "");
+      req.headers.authorization?.replace("Bearer ", "") ||
+      req.cookies?.app_session_token;
 
     if (!token) {
       return res.status(401).json({ error: "Não autenticado" });
@@ -104,7 +119,7 @@ export function registerWhatsAppRoutes(app: Express) {
       return res.status(401).json({ error: "Token inválido" });
     }
 
-    if (payload.role !== "admin" && payload.empresaId !== empresaId) {
+    if (!canAccessWhatsAppSession(payload, empresaId)) {
       return res.status(403).json({ error: "Sem permissão" });
     }
 
@@ -129,15 +144,15 @@ export function registerWhatsAppRoutes(app: Express) {
     }
 
     const token =
-      req.cookies?.app_session_token ||
-      req.headers.authorization?.replace("Bearer ", "");
+      req.headers.authorization?.replace("Bearer ", "") ||
+      req.cookies?.app_session_token;
 
     if (!token) return res.status(401).json({ error: "Não autenticado" });
 
     const payload = verifyToken(token);
     if (!payload) return res.status(401).json({ error: "Token inválido" });
 
-    if (payload.role !== "admin" && payload.empresaId !== empresaId) {
+    if (!canAccessWhatsAppSession(payload, empresaId)) {
       return res.status(403).json({ error: "Sem permissão" });
     }
 
@@ -158,13 +173,14 @@ export function registerWhatsAppRoutes(app: Express) {
     const empresaId = parseInt(req.params.empresaId);
     if (isNaN(empresaId)) return res.status(400).json({ error: "empresaId inválido" });
 
-    const sessao = await getSessaoByEmpresaId(empresaId);
+    const sessao = empresaId === PLATFORM_WHATSAPP_EMPRESA_ID ? null : await getSessaoByEmpresaId(empresaId);
     const liveStatus = getSessionStatus(empresaId);
+    const snapshot = getSessionSnapshot(empresaId);
 
     return res.json({
       status: liveStatus,
-      dbStatus: sessao?.status || "desconectado",
-      connectedAt: sessao?.connectedAt,
+      dbStatus: sessao?.status || snapshot.status,
+      connectedAt: sessao?.connectedAt || snapshot.connectedAt,
     });
   });
 }

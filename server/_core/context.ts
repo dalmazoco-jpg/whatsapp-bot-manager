@@ -34,8 +34,8 @@ export async function createContext(
 
   // Tentar extrair JWT do cookie ou header
   const token =
-    req.cookies?.app_session_token ||
-    req.headers.authorization?.replace("Bearer ", "");
+    req.headers.authorization?.replace("Bearer ", "") ||
+    req.cookies?.app_session_token;
 
   if (token) {
     const payload = verifyToken(token);
@@ -54,11 +54,14 @@ export async function createContext(
       }
       if (user) {
         const isDelegated = !!payload.delegatedEmpresaId;
-        const empresaId = payload.delegatedEmpresaId || user.empresaId;
+        const empresaId = payload.delegatedEmpresaId ?? user.empresaId ?? payload.empresaId ?? null;
         return {
           req,
           res,
-          user,
+          user: {
+            ...user,
+            empresaId,
+          },
           empresaId,
           isDelegated,
         };

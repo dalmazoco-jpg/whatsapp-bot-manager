@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { MASTER_ADMIN_EMAIL } from "@/lib/modules";
+import { unwrapTrpcData } from "@/lib/trpcData";
+import { PLATFORM_WHATSAPP_EMPRESA_ID } from "../../../shared/platform";
 import {
   Smartphone,
   QrCode,
@@ -15,8 +18,14 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 
 export default function ConexaoWhatsApp() {
-  const { data: me } = trpc.auth.me.useQuery();
-  const empresaId = me?.empresaId;
+  const { data: meData } = trpc.auth.me.useQuery();
+  const me = unwrapTrpcData<{
+    email: string;
+    role: string;
+    empresaId: number | null;
+  } | null>(meData);
+  const isMasterAdmin = me?.role === "admin" && me.email?.toLowerCase() === MASTER_ADMIN_EMAIL;
+  const empresaId = isMasterAdmin ? PLATFORM_WHATSAPP_EMPRESA_ID : me?.empresaId;
 
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("desconectado");
@@ -25,7 +34,7 @@ export default function ConexaoWhatsApp() {
 
   // Conectar ao SSE para receber QR em tempo real
   const startSSE = () => {
-    if (!empresaId) return;
+    if (empresaId == null) return;
 
     // Fechar conexão anterior
     if (eventSourceRef.current) {
@@ -74,7 +83,7 @@ export default function ConexaoWhatsApp() {
 
   // Auto-conectar SSE se já estiver aguardando QR
   useEffect(() => {
-    if (empresaId) {
+    if (empresaId != null) {
       // Pequeno delay para garantir que o me query terminou (já garantido pelo check de empresaId)
       startSSE();
     }
@@ -88,7 +97,7 @@ export default function ConexaoWhatsApp() {
 
   // Iniciar conexão WhatsApp
   const handleConnect = async () => {
-    if (!empresaId) return;
+    if (empresaId == null) return;
     setConnecting(true);
     setQrImage(null);
 
@@ -113,7 +122,7 @@ export default function ConexaoWhatsApp() {
 
   // Desconectar
   const handleDisconnect = async () => {
-    if (!empresaId) return;
+    if (empresaId == null) return;
 
     try {
       const token = localStorage.getItem("auth_token") || "";
@@ -160,7 +169,7 @@ export default function ConexaoWhatsApp() {
 
   const currentStatus = statusConfig[status as keyof typeof statusConfig] || statusConfig.desconectado;
 
-  if (!empresaId) {
+  if (empresaId == null) {
     return (
       <DashboardLayout>
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -187,7 +196,9 @@ export default function ConexaoWhatsApp() {
             Conexão WhatsApp
           </h1>
           <p className="typography-body text-muted-foreground">
-            Conecte seu WhatsApp escaneando o QR Code abaixo
+            {isMasterAdmin
+              ? "Conecte o WhatsApp comercial da plataforma para atendimento, dúvidas e vendas."
+              : "Conecte seu WhatsApp escaneando o QR Code abaixo"}
           </p>
         </div>
 

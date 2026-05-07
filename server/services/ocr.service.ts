@@ -1,4 +1,5 @@
 import { ENV } from "../_core/env";
+import { storageGetSignedUrl, storagePut } from "../storage";
 
 type ProdutoExtraido = {
   nome: string;
@@ -10,10 +11,17 @@ type ProdutoExtraido = {
 function normalizarProduto(item: any): ProdutoExtraido | null {
   if (!item?.nome) return null;
 
-  let preco = Number(item.preco || 0);
+  let preco = 0;
+  if (typeof item.preco === "string") {
+    const clean = item.preco.replace(/[^\d,.-]/g, "").replace(",", ".");
+    const parsed = Number(clean);
+    preco = Number.isFinite(parsed) ? parsed : 0;
+  } else {
+    preco = Number(item.preco || 0);
+  }
 
-  // Se vier em reais, converte para centavos
-  if (preco > 0 && preco < 1000) {
+  // Inteiros a partir de 100 são tratados como centavos. Valores decimais ou menores que 100 vêm em reais.
+  if (preco > 0 && (!Number.isInteger(preco) || preco < 100)) {
     preco = Math.round(preco * 100);
   }
 
@@ -27,7 +35,20 @@ function normalizarProduto(item: any): ProdutoExtraido | null {
   };
 }
 
-export async function extractProductsFromImage(base64Image: string): Promise<ProdutoExtraido[]> {
+async function resolveImageUrl(base64Image: string, mimeType: string): Promise<string> {
+  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+    throw new Error(
+      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY to enable image OCR."
+    );
+  }
+
+  const buffer = Buffer.from(base64Image, "base64");
+  const extension = mimeType.split("/")[1]?.split(";")[0] || "jpg";
+  const { key } = await storagePut(`ocr/${Date.now()}.${extension}`, buffer, mimeType);
+  return await storageGetSignedUrl(key);
+}
+
+export async function extractProductsFromImage(base64Image: string, mimeType = "image/jpeg"): Promise<ProdutoExtraido[]> {
   if (!ENV.groqApiKey) {
     throw new Error("GROQ_API_KEY não configurada");
   }
@@ -59,6 +80,8 @@ Regras:
 - Se for folheto de mercado, use categorias como Bebidas, Mercearia, Carnes, Limpeza, Hortifruti.
 `;
 
+  const imageUrl = await resolveImageUrl(base64Image, mimeType);
+
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -75,7 +98,7 @@ Regras:
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`,
+                url: imageUrl,
               },
             },
           ],
@@ -88,9 +111,9 @@ Regras:
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorText = await response.text().catch(() => "");
     console.error("[OCR] Erro Groq Vision:", errorText);
-    throw new Error(`Erro ao ler imagem: ${response.status}`);
+    throw new Error(`Erro ao ler imagem: ${response.status} ${errorText ? `- ${errorText}` : ""}`);
   }
 
   const result = await response.json();
@@ -98,8 +121,8 @@ Regras:
 
   if (!content) return [];
 
-  const parsed = JSON.parse(content);
-  const produtos = Array.isArray(parsed) ? parsed : parsed.produtos;
+  const parsed = typeof content === "string" ? JSON.parse(content) : content;
+  const produtos = Array.isArray(parsed) ? parsed : parsed?.produtos;
 
   if (!Array.isArray(produtos)) return [];
 

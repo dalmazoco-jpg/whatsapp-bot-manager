@@ -17,6 +17,41 @@ function formatCurrency(centavos: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((centavos || 0) / 100);
 }
 
+function presentationLabels(ramo?: string | null) {
+  const type = ramo || "outro";
+  if (["consultorio", "clinica", "salao", "barbearia"].includes(type)) {
+    return {
+      categoryLabel: "Serviços",
+      itemLabel: "Serviços disponíveis nesta categoria",
+      action: "Agendar pelo WhatsApp",
+      summary: "Resumo do interesse",
+      emptyMessage: "Olá, gostaria de agendar um atendimento.",
+      selectedMessage: (names: string[]) => `Olá, tenho interesse em: ${names.join(" + ")}`,
+      add: "Tenho interesse",
+    };
+  }
+  if (["loja", "adega"].includes(type)) {
+    return {
+      categoryLabel: "Categorias",
+      itemLabel: "Produtos disponíveis nesta categoria",
+      action: "Comprar pelo WhatsApp",
+      summary: "Resumo do interesse",
+      emptyMessage: "Olá, gostaria de saber mais sobre os produtos.",
+      selectedMessage: (names: string[]) => `Olá, tenho interesse em: ${names.join(" + ")}`,
+      add: "Adicionar",
+    };
+  }
+  return {
+    categoryLabel: "Categorias",
+    itemLabel: "Itens disponíveis nesta categoria",
+    action: "Pedir no WhatsApp",
+    summary: "Resumo do pedido",
+    emptyMessage: "Olá, gostaria de fazer um pedido.",
+    selectedMessage: (names: string[]) => `Olá, quero pedir: ${names.join(" + ")}`,
+    add: "Adicionar ao pedido",
+  };
+}
+
 export default function PublicApresentacao() {
   const [, params] = useRoute("/public/:slug");
   const slug = params?.slug;
@@ -46,6 +81,7 @@ export default function PublicApresentacao() {
   const categories = data?.categorias || [];
   const contact = data?.config?.whatsapp || data?.empresa?.whatsappNumero || "";
   const whatsappNumber = formatWhatsappNumber(contact);
+  const labels = presentationLabels(data?.empresa?.ramo || data?.empresa?.tipo);
 
   const selectedNames = useMemo(
     () => items.filter((item: any) => selectedItems.includes(String(item.id))).map((item: any) => item.nome),
@@ -53,9 +89,9 @@ export default function PublicApresentacao() {
   );
 
   const message = useMemo(() => {
-    if (selectedNames.length === 0) return "Olá, gostaria de fazer um pedido.";
-    return `Olá, quero pedir: ${selectedNames.join(" + ")}`;
-  }, [selectedNames]);
+    if (selectedNames.length === 0) return labels.emptyMessage;
+    return labels.selectedMessage(selectedNames);
+  }, [labels, selectedNames]);
 
   const handleToggleItem = (id: number, nome: string) => {
     setSelectedItems((prev) => {
@@ -128,7 +164,7 @@ export default function PublicApresentacao() {
             <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6" style={{ borderColor: data.config.corPrimaria || "#10b981" }}>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-emerald-400">Categorias</p>
+                  <p className="text-xs uppercase tracking-[0.3em] text-emerald-400">{labels.categoryLabel}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {categories.length === 0 ? (
                       <span className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-400">Sem categorias</span>
@@ -138,7 +174,7 @@ export default function PublicApresentacao() {
                   </div>
                 </div>
                 <Button onClick={handleWhatsApp} size="sm" className="bg-emerald-500 hover:bg-emerald-600">
-                  <MessageSquare className="w-4 h-4 mr-2" /> Pedir no WhatsApp
+                  <MessageSquare className="w-4 h-4 mr-2" /> {labels.action}
                 </Button>
               </div>
             </div>
@@ -148,7 +184,7 @@ export default function PublicApresentacao() {
                 <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-semibold">{category}</h2>
-                    <p className="text-sm text-slate-500">Produtos disponíveis nesta categoria</p>
+                    <p className="text-sm text-slate-500">{labels.itemLabel}</p>
                   </div>
                 </div>
                 <div className="grid gap-4">
@@ -168,7 +204,7 @@ export default function PublicApresentacao() {
                           variant={selected ? "secondary" : "outline"}
                           onClick={() => handleToggleItem(item.id, item.nome)}
                         >
-                          {selected ? "Remover" : "Adicionar ao pedido"}
+                          {selected ? "Remover" : labels.add}
                         </Button>
                       </div>
                     );
@@ -181,7 +217,7 @@ export default function PublicApresentacao() {
           <aside className="space-y-6">
             <Card className="rounded-3xl border border-slate-800 bg-slate-900/80">
               <CardHeader>
-                <CardTitle>Resumo do pedido</CardTitle>
+                <CardTitle>{labels.summary}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
@@ -190,7 +226,7 @@ export default function PublicApresentacao() {
                     <p className="text-sm text-slate-500">Nenhum item selecionado.</p>
                   ) : (
                     <ul className="space-y-2 text-sm text-slate-200">
-                      {selectedNames.map((nome) => (
+                      {selectedNames.map((nome: string) => (
                         <li key={nome}>• {nome}</li>
                       ))}
                     </ul>
@@ -201,7 +237,7 @@ export default function PublicApresentacao() {
                   <div className="mt-2 rounded-2xl border border-slate-700 bg-slate-900 p-3 text-sm text-slate-200">{message}</div>
                 </div>
                 <Button onClick={handleWhatsApp} className="w-full bg-emerald-500 hover:bg-emerald-600">
-                  <MessageSquare className="w-4 h-4 mr-2" /> Enviar pedido pelo WhatsApp
+                  <MessageSquare className="w-4 h-4 mr-2" /> {labels.action}
                 </Button>
               </CardContent>
             </Card>

@@ -1,11 +1,13 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { google } from "googleapis";
 import { ENV } from "./_core/env";
 import { getDb, getOrCreateAdminUser, getUsuarioByEmail } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { COOKIE_NAME } from "../shared/const";
 import { usuarios, type InsertUsuario } from "../drizzle/schema";
 import type { Request, Response } from "express";
+import { getOAuth2Client, saveCalendarTokens } from "./services/google-calendar.service";
 import {
   findFallbackUserByCredentials,
   findFallbackUserByEmail,
@@ -159,6 +161,56 @@ export async function handleLogin(req: Request, res: Response) {
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ error: "Erro interno do servidor" });
+  }
+}
+
+export async function handleGoogleLoginCallback(req: Request, res: Response) {
+  const { code } = req.query;
+  if (!code || typeof code !== "string") {
+    return res.redirect("/login?google=erro");
+  }
+
+  try {
+    const oauth2 = getOAuth2Client();
+    const { tokens } = await oauth2.getToken(code);
+    if (!tokens.access_token) throw new Error("Google não retornou access_token");
+
+    oauth2.setCredentials(tokens);
+    const oauth2Api = google.oauth2({ version: "v2", auth: oauth2 });
+    const { data: profile } = await oauth2Api.userinfo.get();
+    const email = profile.email?.toLowerCase();
+    if (!email) throw new Error("Google não retornou email");
+
+    let usuario;
+    try {
+      usuario = await getUsuarioByEmail(email);
+    } catch (error) {
+      if (!isFallbackAuthEnabled()) throw error;
+      usuario = findFallbackUserByEmail(email);
+    }
+    if (!usuario) usuario = findFallbackUserByEmail(email);
+
+    if (!usuario) {
+      return res.redirect("/login?google=nao-cadastrado");
+    }
+
+    const token = generateToken({
+      userId: usuario.id,
+      empresaId: usuario.empresaId,
+      role: usuario.role,
+      email: usuario.email,
+    });
+
+    if (usuario.empresaId) {
+      await saveCalendarTokens(usuario.empresaId, tokens);
+    }
+
+    setSessionTokenCookie(res, token);
+    const redirectTo = usuario.role === "admin" ? "/admin?google=conectado" : "/dashboard?google=conectado";
+    return res.redirect(redirectTo);
+  } catch (error) {
+    console.error("Google login callback error:", error);
+    return res.redirect("/login?google=erro");
   }
 }
 

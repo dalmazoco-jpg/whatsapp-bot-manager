@@ -6,6 +6,11 @@ import { googleCalendarTokens } from "../../drizzle/schema";
 import { ENV } from "../_core/env";
 
 const DEFAULT_CALENDAR_ID = "primary";
+type CalendarOAuthTokens = {
+  access_token?: string | null;
+  refresh_token?: string | null;
+  expiry_date?: number | null;
+};
 
 function getRedirectUri() {
   return process.env.GOOGLE_REDIRECT_URI
@@ -36,6 +41,22 @@ export function getAuthUrl(empresaId: number): string {
       "https://www.googleapis.com/auth/calendar.events",
     ],
     state: String(empresaId),
+  });
+}
+
+export function getGoogleLoginAuthUrl(): string {
+  const oauth2 = getOAuth2Client();
+  return oauth2.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: [
+      "openid",
+      "email",
+      "profile",
+      "https://www.googleapis.com/auth/calendar",
+      "https://www.googleapis.com/auth/calendar.events",
+    ],
+    state: "login",
   });
 }
 
@@ -82,11 +103,7 @@ async function savePlatformCalendarToken(token: {
   await updatePlatformSettings({ configIa: nextConfigIa } as any);
 }
 
-// ── Salva tokens no banco ─────────────────────────────────────
-export async function saveTokens(empresaId: number, code: string): Promise<void> {
-  const oauth2 = getOAuth2Client();
-  const { tokens } = await oauth2.getToken(code);
-
+export async function saveCalendarTokens(empresaId: number, tokens: CalendarOAuthTokens): Promise<void> {
   if (isPlatformCalendar(empresaId)) {
     const current = await getPlatformCalendarToken();
     await savePlatformCalendarToken({
@@ -127,6 +144,13 @@ export async function saveTokens(empresaId: number, code: string): Promise<void>
         updatedAt: payload.updatedAt,
       },
     });
+}
+
+// ── Salva tokens no banco ─────────────────────────────────────
+export async function saveTokens(empresaId: number, code: string): Promise<void> {
+  const oauth2 = getOAuth2Client();
+  const { tokens } = await oauth2.getToken(code);
+  await saveCalendarTokens(empresaId, tokens);
 }
 
 // ── Carrega cliente autenticado para uma empresa ──────────────

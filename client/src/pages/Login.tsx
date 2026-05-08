@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Lock, Mail, Loader2 } from "lucide-react";
+import { Calendar, MessageSquare, Lock, Mail, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,17 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMessage, setForgotMessage] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const google = params.get("google");
+    if (google === "nao-cadastrado") {
+      setError("Este e-mail do Google ainda não está cadastrado no sistema. Entre com email/senha ou peça ao admin para cadastrar.");
+    } else if (google === "erro") {
+      setError("Não foi possível concluir o login com Google. Tente novamente.");
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +96,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       setForgotMessage("Erro de conexão. Tente novamente.");
     } finally {
       setForgotLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/google-url", { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        const detail = data.redirectUri ? ` Redirect URI: ${data.redirectUri}` : "";
+        setError(`${data.error || "Login com Google indisponível."}${detail}`);
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setError("Erro ao iniciar login com Google.");
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -164,6 +194,23 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>
+
+          <div className="my-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-slate-700" />
+            <span className="text-xs text-slate-500">ou</span>
+            <div className="h-px flex-1 bg-slate-700" />
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleGoogleLogin}
+            disabled={googleLoading}
+            className="w-full border-slate-600 bg-slate-700/30 text-slate-100 hover:bg-slate-700"
+          >
+            {googleLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Calendar className="w-4 h-4 mr-2" />}
+            {googleLoading ? "Conectando..." : "Entrar com Google e liberar Agenda"}
+          </Button>
 
           <div className="mt-4 text-center">
             <button

@@ -2,12 +2,14 @@ import type { Express, Request, Response } from "express";
 import { verifyToken } from "../auth";
 import {
   getAuthUrl,
+  getGoogleLoginAuthUrl,
   getGoogleRedirectUri,
   saveTokens,
   validarGoogleCalendar,
   buscarHorariosLivres,
   verificarDisponibilidade,
 } from "../services/google-calendar.service";
+import { handleGoogleLoginCallback } from "../auth";
 import { getDb } from "../db";
 import { MASTER_ADMIN_EMAIL } from "../../shared/platform";
 
@@ -23,6 +25,18 @@ function getEmpresaIdFromRequest(req: Request) {
 }
 
 export function registerGoogleCalendarRoutes(app: Express) {
+  // GET /api/auth/google-url — login com Google + consentimento do Calendar
+  app.get("/api/auth/google-url", async (_req: Request, res: Response) => {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      return res.status(503).json({
+        error: "Login com Google ainda não configurado no servidor",
+        setupRequired: true,
+        redirectUri: getGoogleRedirectUri(),
+      });
+    }
+    return res.json({ url: getGoogleLoginAuthUrl(), redirectUri: getGoogleRedirectUri() });
+  });
+
   // GET /api/google/auth-url — gera URL para conectar Google Calendar
   app.get("/api/google/auth-url", async (req: Request, res: Response) => {
     const { payload, empresaId } = getEmpresaIdFromRequest(req);
@@ -43,6 +57,7 @@ export function registerGoogleCalendarRoutes(app: Express) {
   app.get("/api/google/callback", async (req: Request, res: Response) => {
     const { code, state } = req.query;
     if (!code || !state) return res.status(400).send("Parâmetros inválidos");
+    if (state === "login") return handleGoogleLoginCallback(req, res);
     try {
       const empresaId = parseInt(state as string);
       await saveTokens(empresaId, code as string);

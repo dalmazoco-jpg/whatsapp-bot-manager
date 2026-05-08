@@ -2,14 +2,27 @@ import { google } from "googleapis";
 import { getDb, getPlatformSettings, updatePlatformSettings } from "../db";
 import { eq } from "drizzle-orm";
 import { getFallbackPlatformSettings, isFallbackAuthEnabled, updateFallbackPlatformSettings } from "../fallback-store";
+import { googleCalendarTokens } from "../../drizzle/schema";
+import { ENV } from "../_core/env";
+
+const DEFAULT_CALENDAR_ID = "primary";
+
+function getRedirectUri() {
+  return process.env.GOOGLE_REDIRECT_URI
+    || `${ENV.publicAppUrl.replace(/\/$/, "")}/api/google/callback`;
+}
 
 // ── OAuth2 Client ─────────────────────────────────────────────
 export function getOAuth2Client() {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI || `${process.env.APP_URL || "http://localhost:3000"}/api/google/callback`
+    getRedirectUri()
   );
+}
+
+export function getGoogleRedirectUri() {
+  return getRedirectUri();
 }
 
 // ── Gera URL de autorização ───────────────────────────────────
@@ -58,7 +71,7 @@ async function savePlatformCalendarToken(token: {
     googleCalendar: {
       ...current,
       ...token,
-      calendar_id: token.calendar_id || current.calendar_id || "primary",
+      calendar_id: token.calendar_id || current.calendar_id || DEFAULT_CALENDAR_ID,
       updated_at: new Date().toISOString(),
     },
   };
@@ -75,25 +88,45 @@ export async function saveTokens(empresaId: number, code: string): Promise<void>
   const { tokens } = await oauth2.getToken(code);
 
   if (isPlatformCalendar(empresaId)) {
+    const current = await getPlatformCalendarToken();
     await savePlatformCalendarToken({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
-      calendar_id: "primary",
+      access_token: tokens.access_token || current?.access_token || null,
+      refresh_token: tokens.refresh_token || current?.refresh_token || null,
+      token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : current?.token_expiry || null,
+      calendar_id: current?.calendar_id || DEFAULT_CALENDAR_ID,
     });
     return;
   }
 
   const db = getDb();
-  await db.execute(`
-    INSERT INTO google_calendar_tokens (empresa_id, access_token, refresh_token, token_expiry)
-    VALUES (${empresaId}, '${tokens.access_token}', '${tokens.refresh_token}', '${new Date(tokens.expiry_date!).toISOString()}')
-    ON CONFLICT (empresa_id) DO UPDATE SET
-      access_token = EXCLUDED.access_token,
-      refresh_token = EXCLUDED.refresh_token,
-      token_expiry = EXCLUDED.token_expiry,
-      updated_at = NOW()
-  `);
+  const existing = await db
+    .select()
+    .from(googleCalendarTokens)
+    .where(eq(googleCalendarTokens.empresaId, empresaId))
+    .limit(1);
+
+  const payload = {
+    empresaId,
+    accessToken: tokens.access_token || existing[0]?.accessToken || null,
+    refreshToken: tokens.refresh_token || existing[0]?.refreshToken || null,
+    tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : existing[0]?.tokenExpiry || null,
+    calendarId: existing[0]?.calendarId || DEFAULT_CALENDAR_ID,
+    updatedAt: new Date(),
+  };
+
+  await db
+    .insert(googleCalendarTokens)
+    .values(payload)
+    .onConflictDoUpdate({
+      target: googleCalendarTokens.empresaId,
+      set: {
+        accessToken: payload.accessToken,
+        refreshToken: payload.refreshToken,
+        tokenExpiry: payload.tokenExpiry,
+        calendarId: payload.calendarId,
+        updatedAt: payload.updatedAt,
+      },
+    });
 }
 
 // ── Carrega cliente autenticado para uma empresa ──────────────
@@ -118,43 +151,56 @@ export async function getAuthenticatedClient(empresaId: number) {
       });
     });
 
-    return { oauth2, calendarId: token.calendar_id || "primary" };
+    return { oauth2, calendarId: token.calendar_id || DEFAULT_CALENDAR_ID };
   }
 
   const db = getDb();
-  const rows = await db.execute(
-    `SELECT * FROM google_calendar_tokens WHERE empresa_id = ${empresaId} LIMIT 1`
-  ) as unknown[];
+  const rows = await db
+    .select()
+    .from(googleCalendarTokens)
+    .where(eq(googleCalendarTokens.empresaId, empresaId))
+    .limit(1);
 
-  if (!Array.isArray(rows) || rows.length === 0) return null;
-  const token = rows[0] as {
-    access_token: string;
-    refresh_token: string;
-    token_expiry: string;
-    calendar_id: string;
-  };
+  if (rows.length === 0) return null;
+  const token = rows[0];
+  if (!token.accessToken && !token.refreshToken) return null;
 
   const oauth2 = getOAuth2Client();
   oauth2.setCredentials({
-    access_token: token.access_token,
-    refresh_token: token.refresh_token,
-    expiry_date: new Date(token.token_expiry).getTime(),
+    access_token: token.accessToken || undefined,
+    refresh_token: token.refreshToken || undefined,
+    expiry_date: token.tokenExpiry ? new Date(token.tokenExpiry).getTime() : undefined,
   });
 
   // Auto-refresh se expirado
   oauth2.on("tokens", async (newTokens) => {
-    if (newTokens.access_token) {
-      await db.execute(`
-        UPDATE google_calendar_tokens
-        SET access_token = '${newTokens.access_token}',
-            token_expiry = '${new Date(newTokens.expiry_date!).toISOString()}',
-            updated_at = NOW()
-        WHERE empresa_id = ${empresaId}
-      `);
-    }
+    await db
+      .update(googleCalendarTokens)
+      .set({
+        accessToken: newTokens.access_token || token.accessToken,
+        refreshToken: newTokens.refresh_token || token.refreshToken,
+        tokenExpiry: newTokens.expiry_date ? new Date(newTokens.expiry_date) : token.tokenExpiry,
+        updatedAt: new Date(),
+      })
+      .where(eq(googleCalendarTokens.empresaId, empresaId));
   });
 
-  return { oauth2, calendarId: token.calendar_id || "primary" };
+  return { oauth2, calendarId: token.calendarId || DEFAULT_CALENDAR_ID };
+}
+
+export async function validarGoogleCalendar(empresaId: number): Promise<{ conectado: boolean; error?: string; calendarId?: string }> {
+  const auth = await getAuthenticatedClient(empresaId);
+  if (!auth) return { conectado: false };
+
+  try {
+    const calendar = google.calendar({ version: "v3", auth: auth.oauth2 });
+    await calendar.calendars.get({ calendarId: auth.calendarId });
+    return { conectado: true, calendarId: auth.calendarId };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[GoogleCalendar] Token inválido ou sem permissão:", message);
+    return { conectado: false, error: message, calendarId: auth.calendarId };
+  }
 }
 
 // ── Verifica disponibilidade ──────────────────────────────────
@@ -345,14 +391,6 @@ export async function cancelarEvento(empresaId: number, eventId: string): Promis
 
 // ── Verifica se empresa tem Google Calendar conectado ─────────
 export async function temGoogleCalendar(empresaId: number): Promise<boolean> {
-  if (isPlatformCalendar(empresaId)) {
-    const token = await getPlatformCalendarToken();
-    return !!(token?.access_token || token?.refresh_token);
-  }
-
-  const db = getDb();
-  const rows = await db.execute(
-    `SELECT id FROM google_calendar_tokens WHERE empresa_id = ${empresaId} LIMIT 1`
-  ) as unknown[];
-  return Array.isArray(rows) && rows.length > 0;
+  const status = await validarGoogleCalendar(empresaId);
+  return status.conectado;
 }

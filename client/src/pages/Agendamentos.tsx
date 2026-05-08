@@ -30,6 +30,7 @@ export default function Agendamentos() {
 
   // Google Calendar
   const [gcStatus, setGcStatus] = useState<"conectado" | "desconectado" | "carregando">("carregando");
+  const [gcInfo, setGcInfo] = useState<{ configurado?: boolean; redirectUri?: string; error?: string; calendarId?: string }>({});
   const [horariosLivres, setHorariosLivres] = useState<string[]>([]);
   const [dataBusca, setDataBusca] = useState("");
   const [buscandoHorarios, setBuscandoHorarios] = useState(false);
@@ -54,6 +55,7 @@ export default function Agendamentos() {
       return;
     }
     const data = await r.json();
+    setGcInfo(data);
     setGcStatus(data.conectado ? "conectado" : "desconectado");
   };
 
@@ -172,8 +174,8 @@ export default function Agendamentos() {
                     <div className="space-y-3">
                       {proximos.map(ag => {
                         const s = STATUS_CONFIG[ag.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.agendado;
-                        const googleEventId = (ag as any).google_event_id;
-                        const meetLink = (ag as any).google_meet_link;
+                        const googleEventId = (ag as any).googleEventId || (ag as any).google_event_id;
+                        const meetLink = (ag as any).googleMeetLink || (ag as any).google_meet_link;
                         return (
                           <Card key={ag.id} className="border border-border hover:border-blue-500/30 transition-colors">
                             <CardContent className="py-4">
@@ -276,6 +278,16 @@ export default function Agendamentos() {
               <CardContent className="space-y-4">
                 {gcStatus !== "conectado" ? (
                   <div>
+                    {gcInfo.configurado === false && (
+                      <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-800">
+                        Google Calendar ainda não está configurado no servidor. Cadastre no Cloud Run as variáveis <code>GOOGLE_CLIENT_ID</code> e <code>GOOGLE_CLIENT_SECRET</code> e use este redirect URI no Google Cloud: <code>{gcInfo.redirectUri}</code>
+                      </div>
+                    )}
+                    {gcInfo.error && gcInfo.configurado !== false && (
+                      <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700">
+                        A conexão atual não passou na validação do Google. Conecte novamente para renovar a permissão.
+                      </div>
+                    )}
                     <p className="text-sm text-muted-foreground mb-4">
                       Conecte sua conta Google para que a IA verifique sua agenda em tempo real antes de confirmar agendamentos, evitando conflitos de horário.
                     </p>
@@ -285,7 +297,7 @@ export default function Agendamentos() {
                       <p className="flex items-center gap-2">✅ Sugere horários livres ao cliente</p>
                       <p className="flex items-center gap-2">✅ Cancela eventos quando o cliente cancelar pelo WhatsApp</p>
                     </div>
-                    <Button onClick={conectarGoogle} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    <Button onClick={conectarGoogle} className="bg-blue-600 hover:bg-blue-700 text-white" disabled={gcInfo.configurado === false}>
                       <ExternalLink className="w-4 h-4 mr-2" />
                       Conectar Google Calendar
                     </Button>
@@ -293,7 +305,7 @@ export default function Agendamentos() {
                 ) : (
                   <div className="space-y-4">
                     <div className="p-3 bg-emerald-500/10 rounded-lg text-sm text-emerald-700">
-                      ✅ Google Calendar conectado! A IA verificará sua agenda automaticamente.
+                      ✅ Google Calendar conectado! A IA verificará sua agenda automaticamente{gcInfo.calendarId ? ` (${gcInfo.calendarId})` : ""}.
                     </div>
 
                     <div className="border-t border-border pt-4">

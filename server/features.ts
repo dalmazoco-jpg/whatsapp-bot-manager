@@ -2,6 +2,7 @@ import { z } from "zod";
 import { publicProcedure, protectedProcedure, adminProcedure, empresaProcedure, router } from "./_core/trpc";
 import { generateDelegatedToken } from "./auth";
 import { notificarEntregador, notificarContatos, templateEntregaSaindo } from "./services/notificacoes.service";
+import { cancelarEvento } from "./services/google-calendar.service";
 import { invokeLLM } from "./_core/llm";
 import {
   getDb,
@@ -44,7 +45,7 @@ import {
   type InsertApresentacaoConfig,
   type InsertHorarioAtendimento,
 } from "../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   createFallbackEmpresa,
@@ -564,12 +565,17 @@ export const agendamentosRouter = router({
         status: z.enum(["agendado", "confirmado", "cancelado", "realizado"]),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = getDb();
+      const current = await getAgendamentoById(input.id);
+      if (!current || current.empresaId !== ctx.empresaId) throw new Error("Agendamento não encontrado");
+      if (input.status === "cancelado" && current.googleEventId) {
+        await cancelarEvento(ctx.empresaId!, current.googleEventId);
+      }
       await db
         .update(agendamentos)
         .set({ status: input.status })
-        .where(eq(agendamentos.id, input.id));
+        .where(and(eq(agendamentos.id, input.id), eq(agendamentos.empresaId, ctx.empresaId!)));
       return { success: true };
     }),
 });

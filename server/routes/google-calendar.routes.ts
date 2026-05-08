@@ -1,6 +1,13 @@
 import type { Express, Request, Response } from "express";
 import { verifyToken } from "../auth";
-import { getAuthUrl, saveTokens, temGoogleCalendar, buscarHorariosLivres, verificarDisponibilidade } from "../services/google-calendar.service";
+import {
+  getAuthUrl,
+  getGoogleRedirectUri,
+  saveTokens,
+  validarGoogleCalendar,
+  buscarHorariosLivres,
+  verificarDisponibilidade,
+} from "../services/google-calendar.service";
 import { getDb } from "../db";
 import { MASTER_ADMIN_EMAIL } from "../../shared/platform";
 
@@ -25,7 +32,7 @@ export function registerGoogleCalendarRoutes(app: Express) {
       return res.status(503).json({
         error: "Google Calendar ainda não configurado no servidor",
         setupRequired: true,
-        redirectUri: `${process.env.APP_URL || "https://crm-whatsapp-saas-237342297859.us-central1.run.app"}/api/google/callback`,
+        redirectUri: getGoogleRedirectUri(),
       });
     }
     const url = getAuthUrl(empresaId);
@@ -39,10 +46,10 @@ export function registerGoogleCalendarRoutes(app: Express) {
     try {
       const empresaId = parseInt(state as string);
       await saveTokens(empresaId, code as string);
-      return res.redirect("/?google=conectado");
+      return res.redirect("/agendamentos?google=conectado");
     } catch (err) {
       console.error("[GoogleCalendar] Erro no callback:", err);
-      return res.redirect("/?google=erro");
+      return res.redirect("/agendamentos?google=erro");
     }
   });
 
@@ -50,10 +57,13 @@ export function registerGoogleCalendarRoutes(app: Express) {
   app.get("/api/google/status", async (req: Request, res: Response) => {
     const { payload, empresaId } = getEmpresaIdFromRequest(req);
     if (!payload || empresaId == null) return res.status(401).json({ error: "Não autenticado" });
-    const conectado = await temGoogleCalendar(empresaId);
+    const status = await validarGoogleCalendar(empresaId);
     return res.json({
-      conectado,
+      conectado: status.conectado,
+      calendarId: status.calendarId,
+      error: status.error,
       configurado: !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET,
+      redirectUri: getGoogleRedirectUri(),
     });
   });
 

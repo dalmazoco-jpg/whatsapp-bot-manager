@@ -441,7 +441,11 @@ async function executeFunctionCall(empresaId: number, clienteId: number, cliente
           if (evento) {
             googleEventId = evento.eventId;
             meetLink = evento.meetLink;
-            await db.execute(`UPDATE agendamentos SET google_event_id='${googleEventId}', notificacao_enviada=true WHERE id=${agCriado.id}`);
+            await db.update(agendamentos).set({
+              googleEventId,
+              googleMeetLink: meetLink || null,
+              notificacaoEnviada: true,
+            }).where(eq(agendamentos.id, agCriado.id));
           }
         } catch (calErr) {
           console.error("[IA] Erro Google Calendar:", calErr);

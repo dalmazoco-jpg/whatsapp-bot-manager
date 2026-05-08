@@ -124,8 +124,13 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
 - Use emojis com moderação (máximo 2 por mensagem)
 - NÃO revele que é uma IA ou robô
 - Chame o cliente pelo nome quando souber: ${clienteNome !== "Cliente" ? clienteNome : "(nome ainda não coletado)"}
-- Seja objetivo e direto, sem textos longos desnecessários
-- Data de hoje: ${new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}\n\n`;
+- Seja objetivo e direto, com respostas curtas e úteis
+- Data de hoje: ${new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
+- Apresente-se apenas no primeiro contato ou se o cliente perguntar quem está falando. Nunca repita apresentação em toda mensagem.
+- Responda primeiro a pergunta do cliente. Depois conduza para o próximo passo: escolher item/serviço, tirar dúvida, fechar pedido ou agendar.
+- Não invente preço, prazo, produto, serviço, promoção ou disponibilidade. Use somente os dados cadastrados.
+- Se faltar informação para fechar, peça apenas o dado necessário no momento.
+- Foco principal: fechamento do negócio do estabelecimento, sem parecer insistente.\n\n`;
 
   // Cardápio/Produtos
   if (cardapio.length > 0) {
@@ -167,6 +172,13 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
 - Só use agendar_compromisso após o cliente confirmar o horário disponível\n\n`;
   }
 
+  prompt += `ESTRATÉGIA DE ATENDIMENTO:
+- Entenda a necessidade do cliente em 1 ou 2 perguntas, no máximo.
+- Quando houver produto/cardápio/serviço cadastrado, sugira a melhor opção conforme o que o cliente pediu.
+- Para pedido, confirme itens, quantidade, endereço e valor antes de criar.
+- Para agendamento, confirme serviço, data e horário antes de marcar.
+- Se o cliente estiver pronto, finalize com uma pergunta simples de confirmação.\n\n`;
+
   // Instruções por ramo
   const instrucoesPorRamo: Record<string, string> = {
     adega: `INSTRUÇÕES PARA ADEGA:
@@ -203,7 +215,8 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
   prompt += instrucoesPorRamo[ramo] || `INSTRUÇÕES:
 - Atenda com cordialidade e eficiência
 - Para pedidos: confirme itens e endereço antes de criar o pedido
-- Para agendamentos: confirme data, hora e serviço antes de agendar\n`;
+- Para agendamentos: confirme data, hora e serviço antes de agendar
+- Priorize vendas: sempre que possível, mencione benefícios do produto ou serviço e conduza para o fechamento\n`;
 
   // Preferências do cliente
   const prefs = Object.entries(preferencias);
@@ -410,7 +423,7 @@ export async function handleIncomingMessage(
     ];
 
     // Chama a IA
-    let response = await invokeLLM({ messages, tools: IA_TOOLS, tool_choice: "auto", temperature: 0.7 });
+    let response = await invokeLLM({ messages, tools: IA_TOOLS, tool_choice: "auto", temperature: 0.45 });
     let assistantMsg = response.choices[0]?.message;
 
     // Loop de function calling
@@ -435,7 +448,7 @@ export async function handleIncomingMessage(
       }
 
       // Nova chamada à IA com resultados das tools
-      response = await invokeLLM({ messages, tools: IA_TOOLS, tool_choice: "auto", temperature: 0.7 });
+      response = await invokeLLM({ messages, tools: IA_TOOLS, tool_choice: "auto", temperature: 0.45 });
       assistantMsg = response.choices[0]?.message;
     }
 

@@ -42,6 +42,13 @@ export default function Configuracoes() {
     estado: "",
     cep: "",
     whatsappNumero: "",
+    chavePix: "",
+    nomeRecebedorPix: "",
+    bancoPix: "",
+    cidadePix: "",
+    pixCopiaCola: "",
+    qrCodePixUrl: "",
+    instrucoesPagamento: "",
     nomeBot: "",
     systemPrompt: "",
   });
@@ -54,6 +61,7 @@ export default function Configuracoes() {
       const configIa = config.configIa as { nomeBot?: string; systemPrompt?: string } | null;
       const configBot = (config.configBot as any) || {};
       const responsavel = configBot.responsavelLegal || {};
+      const pagamentoPix = configBot.pagamentoPix || {};
       setFormData({
         nome: config.nome || "",
         pessoaTipo: responsavel.pessoaTipo || "fisica",
@@ -69,6 +77,13 @@ export default function Configuracoes() {
         estado: responsavel.estado || "",
         cep: responsavel.cep || "",
         whatsappNumero: config.whatsappNumero || "",
+        chavePix: pagamentoPix.chavePix || "",
+        nomeRecebedorPix: pagamentoPix.nomeRecebedor || "",
+        bancoPix: pagamentoPix.banco || "",
+        cidadePix: pagamentoPix.cidade || "",
+        pixCopiaCola: pagamentoPix.pixCopiaCola || "",
+        qrCodePixUrl: pagamentoPix.qrCodeUrl || "",
+        instrucoesPagamento: pagamentoPix.instrucoesPagamento || "",
         nomeBot: configIa?.nomeBot || "",
         systemPrompt: configIa?.systemPrompt || "",
       });
@@ -128,6 +143,15 @@ export default function Configuracoes() {
           cidade: formData.cidade,
           estado: formData.estado,
           cep: formData.cep,
+        },
+        pagamentoPix: {
+          chavePix: formData.chavePix,
+          nomeRecebedor: formData.nomeRecebedorPix,
+          banco: formData.bancoPix,
+          cidade: formData.cidadePix,
+          pixCopiaCola: formData.pixCopiaCola,
+          qrCodeUrl: formData.qrCodePixUrl,
+          instrucoesPagamento: formData.instrucoesPagamento,
         },
       },
       configIa: {
@@ -310,6 +334,49 @@ export default function Configuracoes() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Estes dados serão usados para contrato, cobrança, emissão de boleto/nota quando configurado e eventual formalização jurídica.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border">
+            <CardHeader>
+              <CardTitle>Dados Pix da Empresa</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Chave Pix</label>
+                  <Input name="chavePix" value={formData.chavePix} onChange={handleChange} placeholder="CPF, CNPJ, email, telefone ou chave aleatória" className="border border-border" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Nome do recebedor</label>
+                  <Input name="nomeRecebedorPix" value={formData.nomeRecebedorPix} onChange={handleChange} placeholder="Nome que aparece no Pix" className="border border-border" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Banco</label>
+                  <Input name="bancoPix" value={formData.bancoPix} onChange={handleChange} placeholder="Banco do recebedor" className="border border-border" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Cidade</label>
+                  <Input name="cidadePix" value={formData.cidadePix} onChange={handleChange} placeholder="Cidade do Pix" className="border border-border" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Pix Copia e Cola</label>
+                <Textarea name="pixCopiaCola" value={formData.pixCopiaCola} onChange={handleChange} placeholder="Cole aqui o Pix Copia e Cola completo" className="border border-border min-h-24" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">URL da imagem do QR Code Pix</label>
+                <Input name="qrCodePixUrl" value={formData.qrCodePixUrl} onChange={handleChange} placeholder="https://..." className="border border-border" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Instruções de pagamento</label>
+                <Textarea name="instrucoesPagamento" value={formData.instrucoesPagamento} onChange={handleChange} placeholder="Ex: Após pagar, envie o comprovante por aqui." className="border border-border min-h-24" />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                A IA usará somente estes dados Pix quando este cliente pedir pagamento. O Pix Copia e Cola será enviado em texto sempre que estiver cadastrado.
               </p>
             </CardContent>
           </Card>

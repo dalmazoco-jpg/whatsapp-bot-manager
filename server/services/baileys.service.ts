@@ -9,6 +9,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   Browsers,
   useMultiFileAuthState,
+  downloadContentFromMessage,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import * as QRCode from "qrcode";
@@ -19,8 +20,9 @@ import {
   type InsertClienteWhatsapp, type InsertMensagemLog, type InsertSessaoWhatsapp,
 } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
-import { handleIncomingMessage } from "./ia.service";
+import { getEmpresaPixQrCodeUrl, handleIncomingMessage, setLeadIaPauseByWhatsapp, shouldSendPixQrCode } from "./ia.service";
 import { handlePlatformSalesMessage } from "./platform-sales.service";
+import { transcribeGroqAudio } from "./groq-speech.service";
 import pino from "pino";
 import { rm } from "fs/promises";
 import { ENV } from "../_core/env";
@@ -160,6 +162,36 @@ async function saveSessionSnapshot(
   }
 }
 
+function getMessageText(message: proto.IMessage) {
+  return message.conversation
+    || message.extendedTextMessage?.text
+    || message.imageMessage?.caption
+    || message.videoMessage?.caption
+    || "";
+}
+
+async function streamToBuffer(stream: AsyncIterable<Uint8Array>) {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+async function transcribeWhatsAppAudio(message: proto.IMessage) {
+  const audioMessage = message.audioMessage;
+  if (!audioMessage) return "";
+  const stream = await downloadContentFromMessage(audioMessage as any, "audio");
+  const audioBuffer = await streamToBuffer(stream);
+  return transcribeGroqAudio(audioBuffer, audioMessage.mimetype || "audio/ogg");
+}
+
+function isPauseText(text: string) {
+  return /^\/?(pause|pausar|assumir)$/i.test(text.trim());
+}
+
+function isUnpauseText(text: string) {
+  return /^\/?(despause|despausar|retomar|ia)$/i.test(text.trim());
+}
+
 // ── Iniciar sessão ───────────────────────────────────────────────────────────
 export async function startBaileysSession(empresaId: number): Promise<void> {
   if (activeSockets.has(empresaId)) {
@@ -236,18 +268,56 @@ export async function startBaileysSession(empresaId: number): Promise<void> {
   sock.ev.on("messages.upsert", async (m) => {
     if (!m.messages || m.type !== "notify") return;
     for (const msg of m.messages) {
-      if (msg.key.fromMe || !msg.message) continue;
+      if (!msg.message) continue;
       const from = msg.key.remoteJid;
       if (!from || from.includes("@g.us") || from.includes("@newsletter") || from === "status@broadcast") continue;
-      const text = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
+
+      const textMessage = getMessageText(msg.message);
+      if (msg.key.fromMe) {
+        if (isPauseText(textMessage) || isUnpauseText(textMessage)) {
+          const paused = isPauseText(textMessage);
+          const ok = await setLeadIaPauseByWhatsapp(empresaId, from, paused, paused ? "atendente_assumiu" : "atendente_liberou");
+          if (ok) {
+            await sock.sendMessage(from, {
+              text: paused
+                ? "IA pausada para este atendimento. Você pode assumir a conversa."
+                : "IA retomada para este atendimento.",
+            });
+          }
+        }
+        continue;
+      }
+
+      let text = textMessage;
+      let inputType: "texto" | "audio" = "texto";
+      if (!text.trim() && msg.message.audioMessage) {
+        try {
+          text = await transcribeWhatsAppAudio(msg.message);
+          inputType = "audio";
+          console.log(`[Baileys] Áudio transcrito empresa ${empresaId} ← ${from}: ${text}`);
+        } catch (error) {
+          console.error("[Baileys] Erro ao transcrever áudio:", error);
+          await sock.sendMessage(from, { text: "Não consegui entender esse áudio. Pode enviar em texto ou gravar novamente, por favor?" });
+          continue;
+        }
+      }
+
       if (!text.trim()) continue;
       const pushName = msg.pushName || "Cliente";
       console.log(`[Baileys] Empresa ${empresaId} ← ${from}: ${text}`);
       try {
         const resposta = empresaId === PLATFORM_WHATSAPP_EMPRESA_ID
           ? await handlePlatformSalesMessage(pushName, text)
-          : await handleIncomingMessage(empresaId, from, pushName, text);
-        if (resposta) await sock.sendMessage(from, { text: resposta });
+          : await handleIncomingMessage(empresaId, from, pushName, text, { inputType });
+        if (resposta) {
+          await sock.sendMessage(from, { text: resposta });
+          if (empresaId !== PLATFORM_WHATSAPP_EMPRESA_ID && shouldSendPixQrCode(resposta)) {
+            const qrCodeUrl = await getEmpresaPixQrCodeUrl(empresaId);
+            if (qrCodeUrl) {
+              await sock.sendMessage(from, { image: { url: qrCodeUrl }, caption: "QR Code Pix" });
+            }
+          }
+        }
       } catch (error) {
         console.error(`[Baileys] Erro ao processar mensagem:`, error);
         await sock.sendMessage(from, { text: "Desculpe, tive um problema técnico. Pode tentar novamente? 🙏" });

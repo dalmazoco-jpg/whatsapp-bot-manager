@@ -105,6 +105,81 @@ const IA_TOOLS: Tool[] = [
 ];
 
 // ── Monta o system prompt dinâmico por ramo ──────────────────
+type PagamentoPixConfig = {
+  chavePix?: string;
+  pixCopiaCola?: string;
+  nomeRecebedor?: string;
+  banco?: string;
+  cidade?: string;
+  qrCodeUrl?: string;
+  instrucoesPagamento?: string;
+};
+
+function normalizePagamentoPix(raw: unknown): PagamentoPixConfig {
+  const pix = ((raw as Record<string, unknown>) || {}) as Record<string, unknown>;
+  return {
+    chavePix: typeof pix.chavePix === "string" ? pix.chavePix.trim() : "",
+    pixCopiaCola: typeof pix.pixCopiaCola === "string" ? pix.pixCopiaCola.trim() : "",
+    nomeRecebedor: typeof pix.nomeRecebedor === "string" ? pix.nomeRecebedor.trim() : "",
+    banco: typeof pix.banco === "string" ? pix.banco.trim() : "",
+    cidade: typeof pix.cidade === "string" ? pix.cidade.trim() : "",
+    qrCodeUrl: typeof pix.qrCodeUrl === "string" ? pix.qrCodeUrl.trim() : "",
+    instrucoesPagamento: typeof pix.instrucoesPagamento === "string" ? pix.instrucoesPagamento.trim() : "",
+  };
+}
+
+function hasPixConfig(pix: PagamentoPixConfig) {
+  return Boolean(pix.chavePix || pix.pixCopiaCola || pix.nomeRecebedor);
+}
+
+function isHumanRequest(text: string) {
+  const lower = text.toLowerCase();
+  return lower.includes("atendente humano") || lower.includes("falar com atendente") || lower.includes("quero atendente") || lower === "humano";
+}
+
+function isPauseCommand(text: string) {
+  return /^\/?(pause|pausar|assumir)$/i.test(text.trim());
+}
+
+function isUnpauseCommand(text: string) {
+  return /^\/?(despause|despausar|retomar|ia)$/i.test(text.trim());
+}
+
+async function setClienteIaPausada(clienteId: number, paused: boolean, reason?: string) {
+  const db = getDb();
+  const [clienteAtual] = await db.select().from(clientesWhatsapp).where(eq(clientesWhatsapp.id, clienteId)).limit(1);
+  if (!clienteAtual) return;
+  const prefs = ((clienteAtual.preferencias as Record<string, unknown>) || {}) as Record<string, unknown>;
+  await db.update(clientesWhatsapp).set({
+    preferencias: {
+      ...prefs,
+      iaPausada: paused,
+      iaPausadaMotivo: paused ? reason || "atendimento_humano" : null,
+      iaPausadaEm: paused ? new Date().toISOString() : null,
+    },
+  }).where(eq(clientesWhatsapp.id, clienteId));
+}
+
+export async function setLeadIaPauseByWhatsapp(empresaId: number, whatsappNumber: string, paused: boolean, reason?: string) {
+  const cliente = await getClienteByWhatsapp(empresaId, whatsappNumber);
+  if (!cliente) return false;
+  await setClienteIaPausada(cliente.id, paused, reason);
+  return true;
+}
+
+export async function getEmpresaPixQrCodeUrl(empresaId: number) {
+  const empresa = await getEmpresaById(empresaId);
+  const configBot = (empresa?.configBot as Record<string, unknown>) || {};
+  const pix = normalizePagamentoPix(configBot.pagamentoPix);
+  return pix.qrCodeUrl || "";
+}
+
+export function shouldSendPixQrCode(text: string) {
+  const lower = text.toLowerCase();
+  return lower.includes("pix")
+    && (lower.includes("copia e cola") || lower.includes("copia-e-cola") || lower.includes("chave pix") || lower.includes("qr code"));
+}
+
 async function buildSystemPrompt(empresaId: number, clienteNome: string, preferencias: Record<string, unknown>): Promise<string> {
   const empresa = await getEmpresaById(empresaId);
   if (!empresa) return "Você é um assistente virtual. Atenda com simpatia em português brasileiro.";
@@ -113,8 +188,10 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
   const horarios = await getHorariosByEmpresaId(empresaId);
   const temCalendar = await temGoogleCalendar(empresaId);
   const configBot = (empresa.configBot as Record<string, unknown>) || {};
+  const configIa = (empresa.configIa as Record<string, unknown>) || {};
+  const pagamentoPix = normalizePagamentoPix(configBot.pagamentoPix);
   const ramo = (empresa as unknown as { ramo?: string }).ramo || empresa.tipo || "geral";
-  const nomeBot = (configBot.nomeBot as string) || "Assistente";
+  const nomeBot = (configBot.nomeBot as string) || (configIa.nomeBot as string) || "Assistente";
   const diasSemana = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
   let prompt = `Você é ${nomeBot}, atendente virtual da "${empresa.nome}".\n`;
@@ -179,6 +256,27 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
 - Para agendamento, confirme serviço, data e horário antes de marcar.
 - Se o cliente estiver pronto, finalize com uma pergunta simples de confirmação.\n\n`;
 
+  prompt += `REGRAS DE PAGAMENTO PIX:
+- Quando o cliente pedir forma de pagamento, orçamento, sinal, entrada ou fechamento, use exclusivamente os dados Pix cadastrados da empresa atual (empresa_id ${empresaId}, "${empresa.nome}").
+- Nunca invente chave Pix, banco, nome do recebedor, cidade, QR Code, Pix Copia e Cola ou valor.
+- Sempre confirme nome do recebedor, valor e descrição do pagamento.
+- Se existir Pix Copia e Cola cadastrado, envie o Pix Copia e Cola em texto.
+- Se existir QR Code Pix cadastrado, avise que o QR Code será enviado junto, mas sempre mande também o Pix Copia e Cola quando houver.
+- Se os dados Pix não estiverem cadastrados, responda exatamente: "Vou solicitar os dados de pagamento corretos para a equipe responsável."\n`;
+
+  if (hasPixConfig(pagamentoPix)) {
+    prompt += `DADOS PIX DA EMPRESA ATUAL:
+- Chave Pix: ${pagamentoPix.chavePix || "não cadastrada"}
+- Nome do recebedor: ${pagamentoPix.nomeRecebedor || "não cadastrado"}
+- Banco: ${pagamentoPix.banco || "não cadastrado"}
+- Cidade: ${pagamentoPix.cidade || "não cadastrada"}
+- Pix Copia e Cola: ${pagamentoPix.pixCopiaCola || "não cadastrado"}
+- QR Code Pix: ${pagamentoPix.qrCodeUrl || "não cadastrado"}
+- Instruções de pagamento: ${pagamentoPix.instrucoesPagamento || "não cadastradas"}\n\n`;
+  } else {
+    prompt += "DADOS PIX DA EMPRESA ATUAL: não cadastrados.\n\n";
+  }
+
   // Instruções por ramo
   const instrucoesPorRamo: Record<string, string> = {
     adega: `INSTRUÇÕES PARA ADEGA:
@@ -227,8 +325,9 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
     }
   }
 
-  if (configBot.promptExtra) {
-    prompt += `\n\nINSTRUÇÕES EXTRAS DO ESTABELECIMENTO:\n${configBot.promptExtra}`;
+  const promptExtra = configBot.promptExtra || configIa.systemPrompt;
+  if (promptExtra) {
+    prompt += `\n\nINSTRUÇÕES EXTRAS DO ESTABELECIMENTO:\n${promptExtra}`;
   }
 
   return prompt;
@@ -249,10 +348,16 @@ async function getConversationHistory(clienteId: number, limit = 15): Promise<Me
 }
 
 // ── Salva mensagem no banco ──────────────────────────────────
-async function logMessage(empresaId: number, clienteId: number, direcao: "entrada" | "saida", conteudo: string) {
+async function logMessage(
+  empresaId: number,
+  clienteId: number,
+  direcao: "entrada" | "saida",
+  conteudo: string,
+  tipo: "texto" | "imagem" | "audio" | "ia_gerada" = direcao === "saida" ? "ia_gerada" : "texto"
+) {
   const db = getDb();
   await db.insert(mensagensLog).values({
-    empresaId, clienteId, direcao, conteudo, tipo: direcao === "saida" ? "ia_gerada" : "texto",
+    empresaId, clienteId, direcao, conteudo, tipo,
   } as InsertMensagemLog);
 }
 
@@ -396,7 +501,8 @@ export async function handleIncomingMessage(
   empresaId: number,
   whatsappNumber: string,
   senderName: string,
-  text: string
+  text: string,
+  options: { inputType?: "texto" | "audio" } = {}
 ): Promise<string> {
   console.log(`[IA] Empresa ${empresaId} | ${whatsappNumber} | Msg: ${text}`);
 
@@ -408,10 +514,33 @@ export async function handleIncomingMessage(
     await db.update(clientesWhatsapp).set({ ultimaInteracao: new Date() }).where(eq(clientesWhatsapp.id, cliente.id));
 
     // Log da mensagem recebida
-    await logMessage(empresaId, cliente.id, "entrada", text);
+    await logMessage(empresaId, cliente.id, "entrada", text, options.inputType || "texto");
+
+    if (isUnpauseCommand(text)) {
+      await setClienteIaPausada(cliente.id, false);
+      return "IA retomada para este atendimento.";
+    }
+
+    if (isPauseCommand(text)) {
+      await setClienteIaPausada(cliente.id, true, "comando_pause");
+      return "IA pausada para este atendimento. Um atendente pode assumir a conversa.";
+    }
+
+    if (isHumanRequest(text)) {
+      await setClienteIaPausada(cliente.id, true, "cliente_solicitou_humano");
+      notificarContatos(
+        empresaId,
+        "novo_cliente",
+        `🙋 *Cliente pediu atendente humano*\n\n👤 ${cliente.nome || senderName}\n📱 ${whatsappNumber.replace("@s.whatsapp.net", "")}\n💬 ${text}`
+      ).catch(console.error);
+      return "Certo, vou chamar um atendente humano para continuar seu atendimento.";
+    }
 
     // Monta contexto
     const preferencias = (cliente.preferencias as Record<string, unknown>) || {};
+    if (preferencias.iaPausada === true) {
+      return "";
+    }
     const systemPrompt = await buildSystemPrompt(empresaId, cliente.nome || senderName, preferencias);
     const history = await getConversationHistory(cliente.id);
 

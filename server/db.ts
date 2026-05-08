@@ -208,6 +208,8 @@ export async function ensureIntegrationTables() {
     )
   `);
 
+  await db.execute(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS delivery_metadata jsonb`);
+
   await db
     .insert(platformSettings)
     .values({

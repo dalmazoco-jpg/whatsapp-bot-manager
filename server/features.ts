@@ -3,6 +3,8 @@ import { publicProcedure, protectedProcedure, adminProcedure, empresaProcedure, 
 import { generateDelegatedToken } from "./auth";
 import { notificarEntregador, notificarContatos, templateEntregaSaindo, templatePedidoEmPreparacao } from "./services/notificacoes.service";
 import { cancelarEvento } from "./services/google-calendar.service";
+import { buildDeliveryPayload, sendDeliveryWebhook } from "./services/delivery-webhook.service";
+import { sendWhatsAppMessage } from "./services/baileys.service";
 import { invokeLLM } from "./_core/llm";
 import {
   getDb,
@@ -455,6 +457,7 @@ export const pedidosRouter = router({
         try {
           const empresaId = ctx.empresaId!;
           const pedido = await getPedidoById(id);
+          const empresa = await getEmpresaById(empresaId);
           const cliente = pedido?.clienteId ? await getClienteById(pedido.clienteId) : null;
           const clienteNome = cliente?.nome || "Cliente";
           const endereco = (pedido as any)?.enderecoEntrega || (pedido as any)?.endereco_entrega || "Endereço não informado";
@@ -473,6 +476,38 @@ export const pedidosRouter = router({
           // Também notifica proprietário
           const statusMsg = input.status === "em_preparo" ? "entrou em preparação" : "saiu para entrega";
           notificarContatos(empresaId, "entrega", `🚚 *Pedido #${id} ${statusMsg}!*\n👤 ${clienteNome}\n📍 ${endereco}`).catch(console.error);
+
+          if (input.status === "saiu_entrega" && pedido && empresa) {
+            try {
+              const deliveryPayload = buildDeliveryPayload({ empresa, pedido, cliente });
+              const delivery = await sendDeliveryWebhook(deliveryPayload);
+              await db
+                .update(pedidos)
+                .set({ deliveryMetadata: delivery, updatedAt: new Date() })
+                .where(and(eq(pedidos.id, id), eq(pedidos.empresaId, empresaId)));
+
+              if (delivery.trackingUrl && cliente?.whatsappNumber) {
+                await sendWhatsAppMessage(
+                  empresaId,
+                  cliente.whatsappNumber,
+                  `Seu pedido #${id} saiu para entrega. Acompanhe em tempo real: ${delivery.trackingUrl}`
+                );
+              }
+            } catch (deliveryError) {
+              console.error("[DeliveryWebhook] Erro ao enviar entrega:", deliveryError);
+              await db
+                .update(pedidos)
+                .set({
+                  deliveryMetadata: {
+                    status: "erro",
+                    error: deliveryError instanceof Error ? deliveryError.message : String(deliveryError),
+                    updatedAt: new Date().toISOString(),
+                  },
+                  updatedAt: new Date(),
+                })
+                .where(and(eq(pedidos.id, id), eq(pedidos.empresaId, empresaId)));
+            }
+          }
         } catch (err) {
           console.error("[Entregador] Erro ao notificar:", err);
         }

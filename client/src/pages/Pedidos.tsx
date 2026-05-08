@@ -130,6 +130,7 @@ export default function Pedidos() {
             filteredPedidos.map((pedido) => {
               const sc = STATUS_CONFIG[pedido.status] || STATUS_CONFIG.recebido;
               const total = pedido.valorTotal + pedido.taxaEntrega;
+              const delivery = (pedido as any).deliveryMetadata || (pedido as any).delivery_metadata || {};
               return (
                 <Card key={pedido.id} className="border border-border hover:border-emerald-500/30 transition-colors">
                   <CardContent className="p-5">
@@ -165,6 +166,24 @@ export default function Pedidos() {
 
                         {pedido.enderecoEntrega && (
                           <p className="text-sm text-muted-foreground mb-2">📍 {pedido.enderecoEntrega}</p>
+                        )}
+
+                        {delivery?.status && (
+                          <div className={`mb-3 rounded-md border px-3 py-2 text-xs ${
+                            delivery.status === "enviado"
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                              : "border-red-500/30 bg-red-500/10 text-red-700"
+                          }`}>
+                            <span className="font-medium">
+                              {delivery.status === "enviado" ? "Entrega enviada ao app" : "Erro ao enviar para o app de entrega"}
+                            </span>
+                            {delivery.trackingUrl && (
+                              <a href={delivery.trackingUrl} target="_blank" rel="noopener noreferrer" className="ml-2 underline">
+                                rastrear
+                              </a>
+                            )}
+                            {delivery.error && <p className="mt-1">{delivery.error}</p>}
+                          </div>
                         )}
 
                         {/* Value breakdown */}

@@ -18,4 +18,6 @@ export const ENV = {
   infinitePayHandle: process.env.INFINITEPAY_HANDLE ?? "denisdalmazo",
   infinitePayBaseUrl: process.env.INFINITEPAY_BASE_URL ?? "https://api.checkout.infinitepay.io",
   publicAppUrl: process.env.APP_URL ?? process.env.PUBLIC_APP_URL ?? "https://crm-whatsapp-saas-237342297859.us-central1.run.app",
+  deliveryWebhookUrl: process.env.DELIVERY_WEBHOOK_URL ?? "https://ais-dev-5ckv2i3hy37kkk2vgdspdf-594334575772.us-east1.run.app/api/webhook/delivery",
+  deliveryWebhookApiKey: process.env.DELIVERY_WEBHOOK_API_KEY ?? "",
 };

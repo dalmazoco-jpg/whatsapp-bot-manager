@@ -163,6 +163,7 @@ export const pedidos = pgTable("pedidos", {
   dataPagamento: timestamp("data_pagamento"),
   enderecoEntrega: text("endereco_entrega"),
   observacoes: text("observacoes"),
+  deliveryMetadata: jsonb("delivery_metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

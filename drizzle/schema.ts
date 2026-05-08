@@ -157,7 +157,7 @@ export const pedidos = pgTable("pedidos", {
   itens: jsonb("itens"),
   valorTotal: integer("valor_total").notNull().default(0), // em centavos
   taxaEntrega: integer("taxa_entrega").notNull().default(0),
-  status: text("status").$type<"recebido"|"confirmado"|"em_preparo"|"saiu_entrega"|"entregue"|"cancelado">().default("recebido").notNull(),
+  status: text("status").$type<"recebido"|"confirmado"|"em_preparo"|"pronto_retirada"|"saiu_entrega"|"entregue"|"retirado"|"finalizado"|"cancelado">().default("recebido").notNull(),
   metodoPagamento: text("metodo_pagamento"), // 'pix', 'dinheiro', 'cartao'
   statusPagamento: text("status_pagamento").$type<"pendente"|"pago"|"estornado">().default("pendente"),
   dataPagamento: timestamp("data_pagamento"),

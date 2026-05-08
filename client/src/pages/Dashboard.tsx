@@ -22,7 +22,7 @@ export default function Dashboard() {
   const totalClientes = Array.isArray(clientes) ? clientes.length : 0;
   const totalPedidos = pedidosArray.length || 0;
   const totalAgendamentos = Array.isArray(agendamentos) ? agendamentos.length : 0;
-  const pedidosConfirmados = pedidosArray.filter((p) => p.status === "confirmado" || p.status === "entregue").length || 0;
+  const pedidosConfirmados = pedidosArray.filter((p) => ["confirmado", "em_preparo", "saiu_entrega", "entregue", "retirado", "finalizado"].includes(p.status)).length || 0;
   const taxaConversao = totalPedidos > 0 ? ((pedidosConfirmados / totalPedidos) * 100).toFixed(1) : "0";
   const isWhatsappConectado = whatsappStatus && "status" in whatsappStatus && whatsappStatus.status === "conectado";
 

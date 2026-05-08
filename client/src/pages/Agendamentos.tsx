@@ -100,7 +100,7 @@ export default function Agendamentos() {
     setSalvandoContato(true);
     await apiFetch("/api/notificacoes/contatos", {
       method: "POST", headers,
-      body: JSON.stringify({ ...novoContato, eventos: ["agendamento", "pedido", "cancelamento", "novo_cliente"] }),
+      body: JSON.stringify({ ...novoContato, eventos: ["agendamento", "pedido", "cancelamento", "novo_cliente", "entrega"] }),
     });
     setNovoContato({ nome: "", whatsapp: "", tipo: "proprietario" });
     await carregarContatos();

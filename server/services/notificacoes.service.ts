@@ -163,3 +163,19 @@ export function templateEntregaSaindo(dados: {
   msg += `\n⚡ _Confirme o recebimento respondendo_ *OK*`;
   return msg;
 }
+
+export function templatePedidoEmPreparacao(dados: {
+  clienteNome: string;
+  endereco: string;
+  pedidoId: number;
+  itens?: string;
+  valor?: string;
+}): string {
+  let msg = `🍔 *PEDIDO EM PREPARAÇÃO — #${dados.pedidoId}*\n\n`;
+  msg += `👤 *Cliente:* ${dados.clienteNome}\n`;
+  msg += `📍 *Endereço/retirada:* ${dados.endereco}\n`;
+  if (dados.itens) msg += `📦 *Itens:* ${dados.itens}\n`;
+  if (dados.valor) msg += `💰 *Valor:* ${dados.valor}\n`;
+  msg += `\n⏱️ _Prepare a entrega/retirada. Quando sair, marque "Saiu p/ Entrega" no painel._`;
+  return msg;
+}

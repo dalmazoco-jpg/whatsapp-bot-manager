@@ -117,7 +117,7 @@ export function registerGoogleCalendarRoutes(app: Express) {
     if (!payload || empresaId == null) return res.status(401).json({ error: "Não autenticado" });
     const { nome, whatsapp, tipo, eventos } = req.body;
     if (!nome || !whatsapp) return res.status(400).json({ error: "Nome e WhatsApp obrigatórios" });
-    const eventosArr = eventos || ["agendamento", "pedido", "cancelamento"];
+    const eventosArr = eventos || ["agendamento", "pedido", "cancelamento", "novo_cliente", "entrega"];
     const db = getDb();
     await db.execute(`
       INSERT INTO contatos_notificacao (empresa_id, nome, whatsapp, tipo, eventos)

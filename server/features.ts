@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { publicProcedure, protectedProcedure, adminProcedure, empresaProcedure, router } from "./_core/trpc";
 import { generateDelegatedToken } from "./auth";
-import { notificarEntregador, notificarContatos, templateEntregaSaindo } from "./services/notificacoes.service";
+import { notificarEntregador, notificarContatos, templateEntregaSaindo, templatePedidoEmPreparacao } from "./services/notificacoes.service";
 import { cancelarEvento } from "./services/google-calendar.service";
 import { invokeLLM } from "./_core/llm";
 import {
@@ -424,7 +424,7 @@ export const pedidosRouter = router({
     .input(
       z.object({
         id: z.number(),
-        status: z.enum(["recebido", "confirmado", "em_preparo", "saiu_entrega", "entregue", "cancelado"]),
+        status: z.enum(["recebido", "confirmado", "em_preparo", "pronto_retirada", "saiu_entrega", "entregue", "retirado", "finalizado", "cancelado"]),
         valorTotal: z.number().optional(), // permitir atualizar o valor se necessário
         statusPagamento: z.enum(["pendente", "pago", "estornado"]).optional(),
       })
@@ -432,13 +432,26 @@ export const pedidosRouter = router({
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
       const { id, ...data } = input;
+      const current = await getPedidoById(id);
+      if (!current || current.empresaId !== ctx.empresaId) throw new Error("Pedido não encontrado");
+      const nextStatusPagamento = input.statusPagamento || (input.status === "finalizado" ? "pago" : undefined);
+      const updateData = {
+        ...data,
+        ...(nextStatusPagamento ? { statusPagamento: nextStatusPagamento } : {}),
+        ...(
+          nextStatusPagamento === "pago" && current.statusPagamento !== "pago"
+            ? { dataPagamento: new Date() }
+            : {}
+        ),
+        updatedAt: new Date(),
+      };
       await db
         .update(pedidos)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(pedidos.id, id));
+        .set(updateData)
+        .where(and(eq(pedidos.id, id), eq(pedidos.empresaId, ctx.empresaId!)));
 
-      // ── Notifica entregador quando saiu para entrega ──────
-      if (input.status === "saiu_entrega") {
+      // ── Notifica operação/entregador quando entra em preparação ou sai para entrega ──────
+      if (input.status === "em_preparo" || input.status === "saiu_entrega") {
         try {
           const empresaId = ctx.empresaId!;
           const pedido = await getPedidoById(id);
@@ -452,11 +465,14 @@ export const pedidosRouter = router({
             ? (pedido.valorTotal / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
             : "—";
 
-          const msgEntregador = templateEntregaSaindo({ clienteNome, endereco, pedidoId: id, itens, valor });
+          const msgEntregador = input.status === "em_preparo"
+            ? templatePedidoEmPreparacao({ clienteNome, endereco, pedidoId: id, itens, valor })
+            : templateEntregaSaindo({ clienteNome, endereco, pedidoId: id, itens, valor });
           notificarEntregador(empresaId, msgEntregador).catch(console.error);
 
           // Também notifica proprietário
-          notificarContatos(empresaId, "entrega", `🚚 *Pedido #${id} saiu para entrega!*\n👤 ${clienteNome}\n📍 ${endereco}`).catch(console.error);
+          const statusMsg = input.status === "em_preparo" ? "entrou em preparação" : "saiu para entrega";
+          notificarContatos(empresaId, "entrega", `🚚 *Pedido #${id} ${statusMsg}!*\n👤 ${clienteNome}\n📍 ${endereco}`).catch(console.error);
         } catch (err) {
           console.error("[Entregador] Erro ao notificar:", err);
         }
@@ -517,13 +533,13 @@ export const financeiroRouter = router({
 
     const faturamentoTotal = allPedidos
       .filter(p => p.statusPagamento === "pago")
-      .reduce((acc, p) => acc + p.valorTotal, 0);
+      .reduce((acc, p) => acc + p.valorTotal + p.taxaEntrega, 0);
 
     const faturamentoHoje = allPedidos
-      .filter(p => p.statusPagamento === "pago" && p.dataPagamento && p.dataPagamento >= hoje)
-      .reduce((acc, p) => acc + p.valorTotal, 0);
+      .filter(p => p.statusPagamento === "pago" && ((p.dataPagamento && p.dataPagamento >= hoje) || (!p.dataPagamento && p.createdAt >= hoje)))
+      .reduce((acc, p) => acc + p.valorTotal + p.taxaEntrega, 0);
 
-    const pedidosPendentes = allPedidos.filter(p => p.status !== "entregue" && p.status !== "cancelado").length;
+    const pedidosPendentes = allPedidos.filter(p => !["entregue", "retirado", "finalizado", "cancelado"].includes(p.status)).length;
 
     return {
       faturamentoTotal,

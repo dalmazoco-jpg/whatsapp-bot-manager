@@ -6,17 +6,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { unwrapTrpcArray } from "@/lib/trpcData";
-import { Search, Package, ShoppingBag, Clock, CheckCircle2, DollarSign, Truck, Bell } from "lucide-react";
+import { Search, Package, ShoppingBag, Clock, CheckCircle2, DollarSign, Truck, Bell, XCircle } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   recebido:     { label: "Recebido",     color: "bg-blue-100 text-blue-800 border-blue-200" },
   confirmado:   { label: "Confirmado",   color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  em_preparo:   { label: "Em Preparo",   color: "bg-orange-100 text-orange-800 border-orange-200" },
+  em_preparo:   { label: "Em Preparação", color: "bg-orange-100 text-orange-800 border-orange-200" },
+  pronto_retirada: { label: "Pronto/Retirada", color: "bg-cyan-100 text-cyan-800 border-cyan-200" },
   saiu_entrega: { label: "Saiu p/ Entrega", color: "bg-purple-100 text-purple-800 border-purple-200" },
   entregue:     { label: "Entregue",     color: "bg-green-100 text-green-800 border-green-200" },
+  retirado:     { label: "Cliente Retirou", color: "bg-green-100 text-green-800 border-green-200" },
+  finalizado:   { label: "Finalizado",   color: "bg-slate-100 text-slate-800 border-slate-200" },
   cancelado:    { label: "Cancelado",    color: "bg-red-100 text-red-800 border-red-200" },
 };
+
+const FINAL_STATUSES = ["entregue", "retirado", "finalizado", "cancelado"];
 
 export default function Pedidos() {
   const { data: pedidos, isLoading, refetch } = trpc.pedidos.list.useQuery();
@@ -47,6 +52,7 @@ export default function Pedidos() {
   const totalReceita = filteredPedidos
     .filter(p => p.status !== "cancelado")
     .reduce((acc, p) => acc + p.valorTotal + p.taxaEntrega, 0);
+  const emAndamento = filteredPedidos.filter(p => !FINAL_STATUSES.includes(p.status)).length;
   const pendentes = filteredPedidos.filter(p => p.status !== "cancelado" && p.statusPagamento !== "pago").length;
 
   return (
@@ -75,8 +81,8 @@ export default function Pedidos() {
             <CardContent className="p-4 flex items-center gap-3">
               <Clock className="w-8 h-8 text-yellow-500 shrink-0" />
               <div>
-                <p className="text-xs text-muted-foreground">Pagtos Pendentes</p>
-                <p className="text-xl font-bold text-yellow-600">{pendentes}</p>
+                <p className="text-xs text-muted-foreground">Em andamento</p>
+                <p className="text-xl font-bold text-yellow-600">{emAndamento}</p>
               </div>
             </CardContent>
           </Card>
@@ -86,6 +92,7 @@ export default function Pedidos() {
               <div>
                 <p className="text-xs text-muted-foreground">Faturamento (filtro)</p>
                 <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalReceita)}</p>
+                <p className="text-xs text-muted-foreground">{pendentes} pagamento(s) pendente(s)</p>
               </div>
             </CardContent>
           </Card>
@@ -178,20 +185,26 @@ export default function Pedidos() {
                       </div>
 
                       {/* Right: actions */}
-                      <div className="flex flex-col gap-2 shrink-0">
+                      <div className="flex flex-col gap-2 shrink-0 min-w-[150px]">
                         {pedido.status === "recebido" && (
                           <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700"
                             onClick={() => updateStatus.mutate({ id: pedido.id, status: "confirmado" })}>Confirmar</Button>
                         )}
                         {pedido.status === "confirmado" && (
                           <Button size="sm" className="bg-orange-600 text-white hover:bg-orange-700"
-                            onClick={() => updateStatus.mutate({ id: pedido.id, status: "em_preparo" })}>Preparar</Button>
+                            onClick={() => updateStatus.mutate({ id: pedido.id, status: "em_preparo" })}>Iniciar preparo</Button>
                         )}
                         {pedido.status === "em_preparo" && (
                           <Button size="sm" className="bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-1"
                             onClick={() => updateStatus.mutate({ id: pedido.id, status: "saiu_entrega" })}>
                             <Truck className="w-3.5 h-3.5" />
                             Saiu p/ Entrega
+                          </Button>
+                        )}
+                        {pedido.status === "em_preparo" && (
+                          <Button size="sm" className="bg-cyan-600 text-white hover:bg-cyan-700"
+                            onClick={() => updateStatus.mutate({ id: pedido.id, status: "pronto_retirada" })}>
+                            Pronto p/ Retirada
                           </Button>
                         )}
                         {pedido.status === "em_preparo" && (
@@ -208,14 +221,33 @@ export default function Pedidos() {
                             {chamandoEntregador === pedido.id ? "Enviando..." : "Avisar Entregador"}
                           </Button>
                         )}
+                        {pedido.status === "pronto_retirada" && (
+                          <Button size="sm" className="bg-green-600 text-white hover:bg-green-700"
+                            onClick={() => updateStatus.mutate({ id: pedido.id, status: "retirado" })}>
+                            Cliente Retirou
+                          </Button>
+                        )}
                         {pedido.status === "saiu_entrega" && (
                           <Button size="sm" className="bg-green-600 text-white hover:bg-green-700"
                             onClick={() => updateStatus.mutate({ id: pedido.id, status: "entregue" })}>Entregue</Button>
+                        )}
+                        {(pedido.status === "entregue" || pedido.status === "retirado") && (
+                          <Button size="sm" className="bg-slate-800 text-white hover:bg-slate-900"
+                            onClick={() => updateStatus.mutate({ id: pedido.id, status: "finalizado", statusPagamento: "pago" })}>
+                            Finalizar Caixa
+                          </Button>
                         )}
                         {pedido.statusPagamento !== "pago" && pedido.status !== "cancelado" && (
                           <Button size="sm" variant="outline" className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
                             onClick={() => updateStatus.mutate({ id: pedido.id, status: pedido.status, statusPagamento: "pago" })}>
                             Marcar Pago
+                          </Button>
+                        )}
+                        {!FINAL_STATUSES.includes(pedido.status) && (
+                          <Button size="sm" variant="outline" className="border-red-500 text-red-600 hover:bg-red-50 flex items-center gap-1"
+                            onClick={() => updateStatus.mutate({ id: pedido.id, status: "cancelado", statusPagamento: pedido.statusPagamento === "pago" ? "estornado" : "pendente" })}>
+                            <XCircle className="w-3.5 h-3.5" />
+                            Cancelar
                           </Button>
                         )}
                       </div>

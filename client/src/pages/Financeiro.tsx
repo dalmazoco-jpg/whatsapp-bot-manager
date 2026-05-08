@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { unwrapTrpcArray } from "@/lib/trpcData";
-import { DollarSign, TrendingUp, AlertCircle, CheckCircle2 } from "lucide-react";
+import { DollarSign, TrendingUp, AlertCircle, CheckCircle2, CalendarDays, ReceiptText } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import {
   Table,
@@ -17,6 +17,7 @@ import {
 export default function Financeiro() {
   const { data: pedidos, isLoading, refetch } = trpc.pedidos.list.useQuery();
   const updateStatus = trpc.pedidos.updateStatus.useMutation({ onSuccess: () => refetch() });
+  const [dataCaixa, setDataCaixa] = useState(() => new Date().toISOString().slice(0, 10));
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value / 100);
@@ -32,6 +33,21 @@ export default function Financeiro() {
   
   const pagos = pedidosValidos.filter(p => p.statusPagamento === "pago");
   const valorRecebido = pagos.reduce((acc, p) => acc + (p.valorTotal + p.taxaEntrega), 0);
+  const inicioCaixa = new Date(`${dataCaixa}T00:00:00`);
+  const fimCaixa = new Date(`${dataCaixa}T23:59:59.999`);
+  const isNoDia = (value?: string | Date | null) => {
+    if (!value) return false;
+    const date = new Date(value);
+    return date >= inicioCaixa && date <= fimCaixa;
+  };
+  const pedidosDoDia = pedidosValidos.filter(p => isNoDia(p.createdAt));
+  const recebidosDoDia = pedidosValidos.filter(p => p.statusPagamento === "pago" && (isNoDia(p.dataPagamento) || (!p.dataPagamento && isNoDia(p.createdAt))));
+  const receitaDia = recebidosDoDia.reduce((acc, p) => acc + (p.valorTotal + p.taxaEntrega), 0);
+  const taxaEntregaDia = recebidosDoDia.reduce((acc, p) => acc + p.taxaEntrega, 0);
+  const canceladosDia = pedidosArray.filter(p => p.status === "cancelado" && isNoDia(p.updatedAt || p.createdAt)).length;
+  const finalizadosDia = pedidosDoDia.filter(p => ["entregue", "retirado", "finalizado"].includes(p.status)).length;
+  const pendentesDia = pedidosDoDia.filter(p => p.status !== "cancelado" && p.statusPagamento !== "pago").length;
+  const ticketMedioDia = recebidosDoDia.length ? Math.round(receitaDia / recebidosDoDia.length) : 0;
 
   return (
     <DashboardLayout>
@@ -87,6 +103,59 @@ export default function Financeiro() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="border-border mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ReceiptText className="w-5 h-5 text-emerald-600" />
+              Fechamento do Caixa
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-medium">Resumo do expediente</p>
+                <p className="text-sm text-muted-foreground">Receita considera pedidos pagos no dia selecionado.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <CalendarDays className="w-4 h-4 text-muted-foreground" />
+                <input
+                  type="date"
+                  value={dataCaixa}
+                  onChange={(event) => setDataCaixa(event.target.value)}
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xs text-muted-foreground">Receita do dia</p>
+                <p className="text-lg font-bold text-emerald-600">{formatCurrency(receitaDia)}</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xs text-muted-foreground">Pedidos pagos</p>
+                <p className="text-lg font-bold">{recebidosDoDia.length}</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xs text-muted-foreground">Finalizados</p>
+                <p className="text-lg font-bold">{finalizadosDia}</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xs text-muted-foreground">Pendentes</p>
+                <p className="text-lg font-bold text-yellow-600">{pendentesDia}</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xs text-muted-foreground">Ticket médio</p>
+                <p className="text-lg font-bold">{formatCurrency(ticketMedioDia)}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="rounded-md bg-muted/30 p-3">Taxas de entrega: <strong>{formatCurrency(taxaEntregaDia)}</strong></div>
+              <div className="rounded-md bg-muted/30 p-3">Cancelados no dia: <strong>{canceladosDia}</strong></div>
+              <div className="rounded-md bg-muted/30 p-3">Pedidos criados no dia: <strong>{pedidosDoDia.length}</strong></div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-border">
           <CardHeader>

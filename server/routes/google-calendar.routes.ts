@@ -8,6 +8,7 @@ import {
   validarGoogleCalendar,
   buscarHorariosLivres,
   verificarDisponibilidade,
+  listarEventosProximos,
 } from "../services/google-calendar.service";
 import { handleGoogleLoginCallback } from "../auth";
 import { getDb } from "../db";
@@ -90,6 +91,50 @@ export function registerGoogleCalendarRoutes(app: Express) {
     if (!data) return res.status(400).json({ error: "Data obrigatória" });
     const horarios = await buscarHorariosLivres(empresaId, new Date(data as string), parseInt(duracao as string) || 60);
     return res.json({ horarios });
+  });
+
+  // GET /api/google/eventos — lista eventos próximos do Google Calendar
+  app.get("/api/google/eventos", async (req: Request, res: Response) => {
+    const { payload, empresaId } = getEmpresaIdFromRequest(req);
+    if (!payload || empresaId == null) return res.status(401).json({ error: "Não autenticado" });
+    const maxResults = parseInt(req.query.maxResults as string) || 250;
+    const dias = parseInt(req.query.dias as string) || 30;
+    const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
+    const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+    const eventos = await listarEventosProximos(empresaId, maxResults, dias, startDate, endDate);
+    return res.json({ eventos });
+  });
+
+  // POST /api/google/eventos — cria novo evento no Google Calendar
+  app.post("/api/google/eventos", async (req: Request, res: Response) => {
+    const { payload, empresaId } = getEmpresaIdFromRequest(req);
+    if (!payload || empresaId == null) return res.status(401).json({ error: "Não autenticado" });
+    const { titulo, descricao, dataHoraInicio, duracaoMinutos, emailConvidado, criarMeet } = req.body;
+    if (!titulo || !dataHoraInicio) return res.status(400).json({ error: "Título e dataHoraInicio obrigatórios" });
+    const evento = await criarEvento(empresaId, titulo, descricao || "", new Date(dataHoraInicio), duracaoMinutos || 60, emailConvidado, criarMeet);
+    if (!evento) return res.status(500).json({ error: "Erro ao criar evento" });
+    return res.json(evento);
+  });
+
+  // PUT /api/google/eventos/:id — atualiza evento no Google Calendar
+  app.put("/api/google/eventos/:id", async (req: Request, res: Response) => {
+    const { payload, empresaId } = getEmpresaIdFromRequest(req);
+    if (!payload || empresaId == null) return res.status(401).json({ error: "Não autenticado" });
+    const eventId = req.params.id;
+    const { titulo, descricao, dataHoraInicio, duracaoMinutos } = req.body;
+    const sucesso = await atualizarEvento(empresaId, eventId, { titulo, descricao, dataHoraInicio: dataHoraInicio ? new Date(dataHoraInicio) : undefined, duracaoMinutos });
+    if (!sucesso) return res.status(500).json({ error: "Erro ao atualizar evento" });
+    return res.json({ success: true });
+  });
+
+  // DELETE /api/google/eventos/:id — deleta evento no Google Calendar
+  app.delete("/api/google/eventos/:id", async (req: Request, res: Response) => {
+    const { payload, empresaId } = getEmpresaIdFromRequest(req);
+    if (!payload || empresaId == null) return res.status(401).json({ error: "Não autenticado" });
+    const eventId = req.params.id;
+    const sucesso = await cancelarEvento(empresaId, eventId);
+    if (!sucesso) return res.status(500).json({ error: "Erro ao deletar evento" });
+    return res.json({ success: true });
   });
 
   // POST /api/google/verificar-disponibilidade

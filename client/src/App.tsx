@@ -17,6 +17,9 @@ import Financeiro from "./pages/Financeiro";
 import AdminClienteConexao from "./pages/AdminClienteConexao";
 import Apresentacao from "./pages/Apresentacao";
 import PublicApresentacao from "./pages/PublicApresentacao";
+import Pagamentos from "./pages/Pagamentos";
+import PagamentoSucesso from "./pages/PagamentoSucesso";
+import PagamentoCancelado from "./pages/PagamentoCancelado";
 import DashboardLayout from "./components/DashboardLayout";
 import { trpc } from "./lib/trpc";
 import { APP_MODULES, getEmpresaModules, MASTER_ADMIN_EMAIL } from "./lib/modules";
@@ -156,8 +159,12 @@ function Router() {
       <Route path="/public/:slug" component={PublicApresentacao} />
       <Route path="/clientes" component={() => <ModuleOnly moduleId="clientes"><Clientes /></ModuleOnly>} />
       <Route path="/pedidos" component={() => <ModuleOnly moduleId="pedidos"><Pedidos /></ModuleOnly>} />
+      <Route path="/google-calendar" component={() => <ModuleOnly moduleId="agendamentos"><Agendamentos /></ModuleOnly>} />
       <Route path="/agendamentos" component={() => <ModuleOnly moduleId="agendamentos"><Agendamentos /></ModuleOnly>} />
       <Route path="/financeiro" component={() => <ModuleOnly moduleId="financeiro"><Financeiro /></ModuleOnly>} />
+      <Route path="/pagamentos" component={Pagamentos} />
+      <Route path="/pagamento/sucesso" component={PagamentoSucesso} />
+      <Route path="/pagamento/cancelado" component={PagamentoCancelado} />
       <Route path="/configuracoes" component={Configuracoes} />
 
       {/* 404 */}

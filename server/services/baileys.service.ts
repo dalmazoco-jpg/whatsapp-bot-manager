@@ -357,13 +357,28 @@ export function getSessionSnapshot(empresaId: number) {
   return snapshot ?? { status: "desconectado" as const, qr: null, connectedAt: null };
 }
 
+export function getSessionWhatsAppId(empresaId: number): string | null {
+  const sock = activeSockets.get(empresaId);
+  if (!sock) return null;
+  const user = sock.user as any;
+  return (user?.id || user?.jid || null) as string | null;
+}
+
 export async function sendWhatsAppMessage(empresaId: number, to: string, text: string): Promise<boolean> {
   const sock = activeSockets.get(empresaId);
   if (!sock) return false;
   try {
+    const selfId = getSessionWhatsAppId(empresaId);
+    if (selfId && selfId === to) {
+      console.warn(`[Baileys] Ignorando envio para o próprio número da sessão: ${to}`);
+      return false;
+    }
     await sock.sendMessage(to, { text });
     return true;
-  } catch { return false; }
+  } catch (error) {
+    console.error(`[Baileys] Erro ao enviar mensagem para ${to}:`, error);
+    return false;
+  }
 }
 
 export async function restoreActiveSessions(): Promise<void> {

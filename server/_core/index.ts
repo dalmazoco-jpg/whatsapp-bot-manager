@@ -16,6 +16,7 @@ import { registerCardapioRoutes } from "../routes/cardapio.routes";
 import { registerCnpjRoutes } from "../routes/cnpj.routes";
 import { registerGoogleCalendarRoutes } from "../routes/google-calendar.routes";
 import { registerPagamentosRoutes } from "../routes/pagamentos.routes";
+import { registerStripeRoutes } from "../routes/stripe.routes";
 import { restoreActiveSessions } from "../services/baileys.service";
 import { ensureApresentacaoConfigTable, ensureBillingTables, ensureDefaultAdminUser, ensureIntegrationTables } from "../db";
 import { ENV } from "./env";
@@ -90,6 +91,7 @@ async function startServer() {
   registerCnpjRoutes(app);
   registerGoogleCalendarRoutes(app);
   registerPagamentosRoutes(app);
+  registerStripeRoutes(app);
 
   // ============================================================
   // tRPC API

@@ -1,0 +1,6 @@
+{
+  "name": "AutoAtende IA",
+  "description": "Automatize seu atendimento no WhatsApp com IA: o robô atende, vende, cobra no Pix, gerencia produção, chama entregador e recupera clientes.",
+  "requestFramePermissions": ["identity-credentials-get"],
+  "majorCapabilities": []
+}

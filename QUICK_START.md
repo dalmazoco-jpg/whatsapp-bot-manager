@@ -47,6 +47,18 @@ Para conectar seu bot WhatsApp:
 3. Inicie o bot
 4. Teste enviando uma mensagem no WhatsApp
 
+## 4.5. Integrar App de Entrega (Opcional)
+
+Para automatizar entregas com app de delivery:
+
+1. Consulte [DELIVERY_INTEGRATION.md](./DELIVERY_INTEGRATION.md)
+2. Configure as variáveis de ambiente:
+   ```
+   DELIVERY_WEBHOOK_URL=https://seu-app-entrega.com/api/webhook
+   DELIVERY_WEBHOOK_API_KEY=sua_chave_api
+   ```
+3. Teste mudando um pedido para "Saiu para Entrega"
+
 ## 5. Entender o Dashboard
 
 ### KPIs (Cartões no topo)

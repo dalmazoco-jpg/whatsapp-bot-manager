@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { unwrapTrpcArray } from "@/lib/trpcData";
 import {
-  Calendar, Clock, Plus, Trash2, Bell, BellOff,
+  Calendar, Clock, Plus, Trash2, Bell,
   CheckCircle2, XCircle, Loader2, ExternalLink,
   Video, Phone, User, AlertCircle, RefreshCw
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import GoogleCalendar from "@/components/GoogleCalendar";
 import { toast } from "sonner";
 
 const STATUS_CONFIG = {
@@ -23,6 +26,17 @@ type ContatoNotificacao = {
   id: number; nome: string; whatsapp: string; tipo: string; eventos: string[];
 };
 
+type HorarioAtendimento = {
+  id?: number;
+  diaSemana: number;
+  label: string;
+  horaInicio: string;
+  horaFim: string;
+  ativo: boolean;
+};
+
+const DIA_DA_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
 export default function Agendamentos() {
   const { data: me } = trpc.auth.me.useQuery();
   const { data: agendamentos, isLoading, refetch } = trpc.agendamentos.list.useQuery();
@@ -34,12 +48,23 @@ export default function Agendamentos() {
   const [horariosLivres, setHorariosLivres] = useState<string[]>([]);
   const [dataBusca, setDataBusca] = useState("");
   const [buscandoHorarios, setBuscandoHorarios] = useState(false);
+  const [eventosGoogle, setEventosGoogle] = useState<Array<{ id: string; titulo: string; inicio: string; fim: string; local?: string; link?: string }>>([]);
+  const [carregandoEventosGoogle, setCarregandoEventosGoogle] = useState(false);
 
   // Contatos de notificação
   const [contatos, setContatos] = useState<ContatoNotificacao[]>([]);
   const [novoContato, setNovoContato] = useState({ nome: "", whatsapp: "", tipo: "proprietario" });
   const [salvandoContato, setSalvandoContato] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<"agenda" | "google" | "notificacoes">("agenda");
+  const [abaAtiva, setAbaAtiva] = useState<"google" | "notificacoes">("google");
+
+  const { data: horariosData, refetch: refetchHorarios } = trpc.horarios.list.useQuery();
+  const upsertHorario = trpc.horarios.upsert.useMutation({
+    onSuccess: async () => {
+      await refetchHorarios();
+      toast.success("Horário salvo");
+    },
+  });
+  const [horarios, setHorarios] = useState<HorarioAtendimento[]>([]);
 
   const token = localStorage.getItem("auth_token") || "";
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -52,12 +77,23 @@ export default function Agendamentos() {
     const r = await apiFetch("/api/google/status");
     if (!r.ok) {
       setGcStatus("desconectado");
+      setEventosGoogle([]);
       return;
     }
     const data = await r.json();
     setGcInfo(data);
-    setGcStatus(data.conectado ? "conectado" : "desconectado");
+    const conectado = data.conectado ? "conectado" : "desconectado";
+    setGcStatus(conectado);
+    if (conectado === "conectado") {
+      await carregarEventosGoogle();
+    } else {
+      setEventosGoogle([]);
+    }
   };
+
+  useEffect(() => {
+    verificarGoogleCalendar();
+  }, []);
 
   // Conectar Google Calendar
   const conectarGoogle = async () => {
@@ -69,6 +105,21 @@ export default function Agendamentos() {
     }
     window.location.href = data.url;
     setTimeout(verificarGoogleCalendar, 5000);
+  };
+
+  const carregarEventosGoogle = async () => {
+    setCarregandoEventosGoogle(true);
+    try {
+      const r = await apiFetch("/api/google/eventos?maxResults=8&dias=7");
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Erro ao carregar eventos do Google Calendar");
+      setEventosGoogle(data.eventos || []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao carregar eventos do Google Calendar");
+      setEventosGoogle([]);
+    } finally {
+      setCarregandoEventosGoogle(false);
+    }
   };
 
   // Buscar horários livres
@@ -114,6 +165,36 @@ export default function Agendamentos() {
   };
 
   const agendamentosArray = unwrapTrpcArray<typeof agendamentos extends Array<infer T> ? T : any>(agendamentos);
+
+  useEffect(() => {
+    if (!horariosData) return;
+    const map = new Map(horariosData.map((h) => [h.diaSemana, h]));
+    const rows: HorarioAtendimento[] = DIA_DA_SEMANA.map((label, diaSemana) => {
+      const existing = map.get(diaSemana);
+      return {
+        id: existing?.id,
+        diaSemana,
+        label,
+        horaInicio: existing?.horaInicio || "08:00",
+        horaFim: existing?.horaFim || "18:00",
+        ativo: existing?.ativo ?? false,
+      };
+    });
+    setHorarios(rows);
+  }, [horariosData]);
+
+  const atualizarHorario = (index: number, partial: Partial<HorarioAtendimento>) => {
+    setHorarios((current) => current.map((horario, idx) => idx === index ? { ...horario, ...partial } : horario));
+  };
+
+  const salvarHorario = async (horario: HorarioAtendimento) => {
+    await upsertHorario.mutateAsync({
+      diaSemana: horario.diaSemana,
+      horaInicio: horario.horaInicio,
+      horaFim: horario.horaFim,
+      ativo: horario.ativo,
+    });
+  };
   const agOrdenados = [...agendamentosArray].sort(
     (a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime()
   );
@@ -131,15 +212,14 @@ export default function Agendamentos() {
         <div className="mb-6">
           <h1 className="typography-h1 mb-1 flex items-center gap-3">
             <Calendar className="w-7 h-7 text-blue-500" />
-            Agendamentos
+            Google Calendar
           </h1>
-          <p className="text-muted-foreground text-sm">Gerencie compromissos criados pela IA, integre ao Google Calendar e configure notificações</p>
+          <p className="text-muted-foreground text-sm">Visualize, crie e edite seus compromissos diretamente pela agenda do Google no SaaS</p>
         </div>
 
         {/* Abas */}
         <div className="flex gap-2 mb-6 border-b border-border">
           {[
-            { id: "agenda", label: "📅 Agenda", onClick: () => setAbaAtiva("agenda") },
             { id: "google", label: "🗓️ Google Calendar", onClick: () => { setAbaAtiva("google"); verificarGoogleCalendar(); } },
             { id: "notificacoes", label: "🔔 Notificações", onClick: () => { setAbaAtiva("notificacoes"); carregarContatos(); } },
           ].map(aba => (
@@ -153,191 +233,106 @@ export default function Agendamentos() {
           ))}
         </div>
 
-        {/* ABA: AGENDA */}
-        {abaAtiva === "agenda" && (
-          <div className="space-y-6">
-            {isLoading ? (
-              <div className="text-center py-12"><Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" /></div>
-            ) : proximos.length === 0 && passados.length === 0 ? (
+        {/* ABA: GOOGLE CALENDAR */}
+        {abaAtiva === "google" && (
+          <div className="space-y-4">
+            {gcStatus !== "conectado" ? (
               <Card className="border border-border">
-                <CardContent className="py-16 text-center">
-                  <Calendar className="w-14 h-14 mx-auto mb-4 text-muted-foreground/30" />
-                  <p className="text-muted-foreground">Nenhum agendamento ainda</p>
-                  <p className="text-sm text-muted-foreground mt-1">Os clientes podem agendar pelo WhatsApp e a IA registra aqui</p>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    🗓️ Integração Google Calendar
+                    {gcStatus === "carregando" && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {gcStatus === "conectado" && <span className="text-xs text-emerald-500 font-normal flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Conectado</span>}
+                    {gcStatus === "desconectado" && <span className="text-xs text-red-400 font-normal">Desconectado</span>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {gcInfo.configurado === false && (
+                    <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-800">
+                      Google Calendar ainda não está configurado no servidor. Cadastre no Cloud Run as variáveis <code>GOOGLE_CLIENT_ID</code> e <code>GOOGLE_CLIENT_SECRET</code> e use este redirect URI no Google Cloud: <code>{gcInfo.redirectUri}</code>
+                    </div>
+                  )}
+                  {gcInfo.error && gcInfo.configurado !== false && (
+                    <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700">
+                      A conexão atual não passou na validação do Google. Conecte novamente para renovar a permissão.
+                    </div>
+                  )}
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Conecte sua conta Google para visualizar e gerenciar sua agenda diretamente no SaaS, sem precisar abrir uma nova aba.
+                  </p>
+                  <div className="space-y-2 text-sm text-muted-foreground mb-4">
+                    <p className="flex items-center gap-2">✅ Visualize sua agenda em formato de calendário</p>
+                    <p className="flex items-center gap-2">✅ Crie novos eventos diretamente</p>
+                    <p className="flex items-center gap-2">✅ Edite e cancele eventos existentes</p>
+                    <p className="flex items-center gap-2">✅ IA verifica disponibilidade automaticamente</p>
+                  </div>
+                  <Button onClick={conectarGoogle} className="bg-blue-600 hover:bg-blue-700 text-white" disabled={gcInfo.configurado === false}>
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Conectar Google Calendar
+                  </Button>
                 </CardContent>
               </Card>
             ) : (
               <>
-                {proximos.length > 0 && (
-                  <div>
-                    <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Próximos</h2>
-                    <div className="space-y-3">
-                      {proximos.map(ag => {
-                        const s = STATUS_CONFIG[ag.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.agendado;
-                        const googleEventId = (ag as any).googleEventId || (ag as any).google_event_id;
-                        const meetLink = (ag as any).googleMeetLink || (ag as any).google_meet_link;
-                        return (
-                          <Card key={ag.id} className="border border-border hover:border-blue-500/30 transition-colors">
-                            <CardContent className="py-4">
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex items-start gap-3">
-                                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex flex-col items-center justify-center text-blue-600 shrink-0">
-                                    <span className="text-xs font-bold">{formatData(ag.dataHora).split(",")[0]}</span>
-                                    <span className="text-xs">{formatHora(ag.dataHora)}</span>
-                                  </div>
-                                  <div>
-                                    <p className="font-medium">{ag.titulo}</p>
-                                    <p className="text-sm text-muted-foreground">{formatData(ag.dataHora)} · {ag.duracao}min</p>
-                                    {googleEventId && (
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <span className="text-xs text-emerald-600 flex items-center gap-1">
-                                          <CheckCircle2 className="w-3 h-3" /> Google Calendar
-                                        </span>
-                                        {meetLink && (
-                                          <a href={meetLink} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 flex items-center gap-1 hover:underline">
-                                            <Video className="w-3 h-3" /> Meet
-                                          </a>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-xs px-2 py-1 rounded-full ${s.bg} ${s.color}`}>{s.label}</span>
-                                  {ag.status === "agendado" && (
-                                    <>
-                                      <Button size="sm" variant="ghost" className="text-emerald-600 hover:text-emerald-700 h-7 px-2 text-xs"
-                                        onClick={() => updateStatus.mutate({ id: ag.id, status: "confirmado" })}>
-                                        <CheckCircle2 className="w-3 h-3 mr-1" /> Confirmar
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 h-7 px-2 text-xs"
-                                        onClick={() => updateStatus.mutate({ id: ag.id, status: "cancelado" })}>
-                                        <XCircle className="w-3 h-3 mr-1" /> Cancelar
-                                      </Button>
-                                    </>
-                                  )}
-                                  {ag.status === "confirmado" && (
-                                    <Button size="sm" variant="ghost" className="text-gray-500 hover:text-gray-700 h-7 px-2 text-xs"
-                                      onClick={() => updateStatus.mutate({ id: ag.id, status: "realizado" })}>
-                                      <CheckCircle2 className="w-3 h-3 mr-1" /> Realizado
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                <GoogleCalendar empresaId={me?.empresaId || 0} />
 
-                {passados.length > 0 && (
-                  <div>
-                    <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Histórico</h2>
-                    <div className="space-y-2 opacity-60">
-                      {passados.slice(0, 5).map(ag => {
-                        const s = STATUS_CONFIG[ag.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.realizado;
-                        return (
-                          <Card key={ag.id} className="border border-border">
-                            <CardContent className="py-3">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <Clock className="w-4 h-4 text-muted-foreground" />
-                                  <div>
-                                    <p className="text-sm font-medium">{ag.titulo}</p>
-                                    <p className="text-xs text-muted-foreground">{formatData(ag.dataHora)} às {formatHora(ag.dataHora)}</p>
-                                  </div>
-                                </div>
-                                <span className={`text-xs px-2 py-1 rounded-full ${s.bg} ${s.color}`}>{s.label}</span>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ABA: GOOGLE CALENDAR */}
-        {abaAtiva === "google" && (
-          <div className="space-y-6 max-w-2xl">
-            <Card className="border border-border">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  🗓️ Integração Google Calendar
-                  {gcStatus === "carregando" && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {gcStatus === "conectado" && <span className="text-xs text-emerald-500 font-normal flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Conectado</span>}
-                  {gcStatus === "desconectado" && <span className="text-xs text-red-400 font-normal">Desconectado</span>}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {gcStatus !== "conectado" ? (
-                  <div>
-                    {gcInfo.configurado === false && (
-                      <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-800">
-                        Google Calendar ainda não está configurado no servidor. Cadastre no Cloud Run as variáveis <code>GOOGLE_CLIENT_ID</code> e <code>GOOGLE_CLIENT_SECRET</code> e use este redirect URI no Google Cloud: <code>{gcInfo.redirectUri}</code>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Card className="border border-border">
+                    <CardHeader>
+                      <CardTitle className="text-base">Verificar Horários Disponíveis</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <label className="text-sm font-medium">Data</label>
+                        <Input
+                          type="date"
+                          value={dataBusca}
+                          onChange={(e) => setDataBusca(e.target.value)}
+                        />
                       </div>
-                    )}
-                    {gcInfo.error && gcInfo.configurado !== false && (
-                      <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700">
-                        A conexão atual não passou na validação do Google. Conecte novamente para renovar a permissão.
-                      </div>
-                    )}
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Conecte sua conta Google para que a IA verifique sua agenda em tempo real antes de confirmar agendamentos, evitando conflitos de horário.
-                    </p>
-                    <div className="space-y-2 text-sm text-muted-foreground mb-4">
-                      <p className="flex items-center gap-2">✅ IA verifica disponibilidade automaticamente</p>
-                      <p className="flex items-center gap-2">✅ Cria eventos no Google Calendar ao agendar</p>
-                      <p className="flex items-center gap-2">✅ Sugere horários livres ao cliente</p>
-                      <p className="flex items-center gap-2">✅ Cancela eventos quando o cliente cancelar pelo WhatsApp</p>
-                    </div>
-                    <Button onClick={conectarGoogle} className="bg-blue-600 hover:bg-blue-700 text-white" disabled={gcInfo.configurado === false}>
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Conectar Google Calendar
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="p-3 bg-emerald-500/10 rounded-lg text-sm text-emerald-700">
-                      ✅ Google Calendar conectado! A IA verificará sua agenda automaticamente{gcInfo.calendarId ? ` (${gcInfo.calendarId})` : ""}.
-                    </div>
-
-                    <div className="border-t border-border pt-4">
-                      <h3 className="font-medium mb-3 text-sm">Verificar horários disponíveis</h3>
-                      <div className="flex gap-2">
-                        <Input type="date" value={dataBusca} onChange={e => setDataBusca(e.target.value)} className="max-w-[180px]" />
-                        <Button variant="outline" onClick={buscarHorarios} disabled={buscandoHorarios || !dataBusca}>
-                          {buscandoHorarios ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                          Buscar
-                        </Button>
-                      </div>
+                      <Button
+                        onClick={buscarHorarios}
+                        disabled={buscandoHorarios}
+                        className="w-full"
+                      >
+                        {buscandoHorarios ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                        Buscar Horários
+                      </Button>
                       {horariosLivres.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {horariosLivres.map(h => (
-                            <span key={h} className="px-3 py-1 bg-blue-500/10 text-blue-600 rounded-full text-sm">{h}</span>
-                          ))}
+                        <div className="p-2 bg-emerald-500/10 rounded-lg">
+                          <p className="text-xs font-medium text-emerald-700 mb-2">Horários disponíveis:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {horariosLivres.map((horario) => (
+                              <Badge key={horario} variant="secondary" className="text-xs">
+                                {horario}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
                       )}
-                      {horariosLivres.length === 0 && dataBusca && !buscandoHorarios && (
-                        <p className="text-sm text-muted-foreground mt-2">Nenhum horário disponível nesta data.</p>
-                      )}
-                    </div>
+                    </CardContent>
+                  </Card>
 
-                    <div className="border-t border-border pt-4">
-                      <p className="text-xs text-muted-foreground">
-                        Para desconectar, revogue o acesso em <a href="https://myaccount.google.com/permissions" target="_blank" className="text-blue-500 hover:underline">myaccount.google.com/permissions</a>
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  <Card className="border border-border">
+                    <CardHeader>
+                      <CardTitle className="text-base">Horários de Atendimento</CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-sm text-muted-foreground max-h-64 overflow-y-auto space-y-2">
+                      {horarios.length === 0 ? (
+                        <p>Carregando horários...</p>
+                      ) : (
+                        horarios.filter(h => h.ativo).map((horario) => (
+                          <div key={horario.diaSemana} className="p-2 rounded bg-background border border-border text-xs">
+                            <p className="font-medium">{horario.label}</p>
+                            <p className="text-muted-foreground">{horario.horaInicio} - {horario.horaFim}</p>
+                          </div>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </>
+            )}
           </div>
         )}
 

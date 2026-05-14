@@ -1,7 +1,135 @@
 import { getDb } from "../db";
-import { sendWhatsAppMessage } from "./baileys.service";
+import { getSessionWhatsAppId, sendWhatsAppMessage } from "./baileys.service";
+import { entregasNotificadas } from "../../drizzle/schema";
+import { eq, and } from "drizzle-orm";
 
 export type TipoEvento = "agendamento" | "pedido" | "cancelamento" | "entrega" | "novo_cliente";
+
+// ── Busca pedido aguardando resposta de entregador ─────────────
+async function getPedidoAguardandoEntregador(empresaId: number, whatsappNumber: string): Promise<number | null> {
+  const db = getDb();
+  const cleanWhatsapp = whatsappNumber.replace(/[^0-9]/g, "");
+  const rows = await db.execute(`
+    SELECT DISTINCT pedido_id
+    FROM entregas_notificadas
+    WHERE entregador_whatsapp = '${cleanWhatsapp}'
+    AND resposta_recebida = false
+    LIMIT 1
+  `) as unknown[];
+  if (Array.isArray(rows) && rows.length > 0) {
+    return (rows[0] as any).pedido_id || null;
+  }
+  return null;
+}
+
+// ── Verifica se um número é de um entregador ──────────────────
+export async function isEntregador(empresaId: number, whatsappNumber: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db.execute(`
+    SELECT id FROM contatos_notificacao
+    WHERE empresa_id = ${empresaId}
+    AND LOWER(TRIM(tipo)) = 'entregador'
+    AND whatsapp = '${whatsappNumber.replace(/[^0-9]/g, "")}'
+    AND ativo = true
+  `) as unknown[];
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+// ── Processa resposta do entregador ──────────────────────────
+export async function processarRespostaEntregador(empresaId: number, whatsappNumber: string, resposta: string): Promise<{ processado: boolean; mensagem?: string }> {
+  const pedidoId = await getPedidoAguardandoEntregador(empresaId, whatsappNumber);
+  if (!pedidoId) {
+    return { processado: false };
+  }
+
+  const db = getDb();
+  const respostaLower = resposta.toLowerCase().trim();
+
+  let respostaTipo: 'aceitou' | 'rejeitou' | null = null;
+  let mensagem = '';
+
+  // Detecta tipo de resposta
+  if (respostaLower.includes('ok') || respostaLower.includes('sim') || respostaLower.includes('aceito') || respostaLower.includes('vou fazer')) {
+    respostaTipo = 'aceitou';
+    mensagem = '✅ Obrigado! Entrega confirmada.';
+  } else if (respostaLower.includes('não') || respostaLower.includes('rejeito') || respostaLower.includes('não posso') || respostaLower.includes('ocupado')) {
+    respostaTipo = 'rejeitou';
+    mensagem = '❌ Entrega rejeitada. Procurando outro entregador...';
+
+    // Busca próximo entregador
+    const proximosEntregadores = await db.execute(`
+      SELECT whatsapp FROM contatos_notificacao
+      WHERE empresa_id = ${empresaId}
+      AND LOWER(TRIM(tipo)) = 'entregador'
+      AND ativo = true
+      AND whatsapp <> '${whatsappNumber.replace(/[^0-9]/g, "")}'
+      LIMIT 5
+    `) as unknown[];
+
+    if (Array.isArray(proximosEntregadores) && proximosEntregadores.length > 0) {
+      // Busca dados do pedido para reenviar
+      const pedidoData = await db.execute(`
+        SELECT p.*, c.nome as cliente_nome, c.whatsapp as cliente_whatsapp
+        FROM pedidos p
+        LEFT JOIN clientes_whatsapp c ON c.id = p.cliente_id
+        WHERE p.id = ${pedidoId}
+      `) as unknown[];
+
+      if (Array.isArray(pedidoData) && pedidoData.length > 0) {
+        const pedido = pedidoData[0] as any;
+        const endereco = pedido.enderecoEntrega || pedido.endereco_entrega || "Endereço não informado";
+        const itens = Array.isArray(pedido.itens)
+          ? pedido.itens.map((i: any) => `${i.qtd}x ${i.nome}`).join(", ")
+          : "Ver pedido no sistema";
+        const valor = pedido.valorTotal
+          ? (pedido.valorTotal / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+          : "—";
+
+        const msg = templateEntregaSaindo({
+          clienteNome: pedido.cliente_nome || "Cliente",
+          endereco,
+          pedidoId,
+          itens,
+          valor
+        });
+
+        // Notifica próximos entregadores
+        for (const ent of proximosEntregadores as { whatsapp: string }[]) {
+          const numero = formatarNumero(ent.whatsapp);
+          if (numero) {
+            await sendWhatsAppMessage(empresaId, numero, msg);
+            await db.insert(entregasNotificadas).values({
+              pedidoId,
+              entregadorWhatsapp: ent.whatsapp.replace(/[^0-9]/g, ""),
+              notificadoEm: new Date(),
+              respostaRecebida: false,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (respostaTipo) {
+    // Atualiza a notificação como respondida
+    const db = getDb();
+    const cleanWhatsapp = whatsappNumber.replace(/[^0-9]/g, "");
+    await db.update(entregasNotificadas)
+      .set({
+        respostaRecebida: true,
+        respostaTipo,
+        respostaEm: new Date(),
+      })
+      .where(and(
+        eq(entregasNotificadas.pedidoId, pedidoId),
+        eq(entregasNotificadas.entregadorWhatsapp, cleanWhatsapp)
+      ));
+
+    return { processado: true, mensagem };
+  }
+
+  return { processado: false };
+}
 
 interface ContatoNotificacao {
   id: number;
@@ -28,7 +156,8 @@ async function getContatos(empresaId: number, evento: TipoEvento): Promise<Conta
 
 // ── Formata número WhatsApp ───────────────────────────────────
 function formatarNumero(numero: string): string {
-  const limpo = numero.replace(/\D/g, "");
+  const limpo = String(numero || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!limpo) return "";
   if (limpo.startsWith("55")) return `${limpo}@s.whatsapp.net`;
   return `55${limpo}@s.whatsapp.net`;
 }
@@ -42,10 +171,24 @@ export async function notificarContatos(
   const contatos = await getContatos(empresaId, evento);
   if (contatos.length === 0) return;
 
+  const selfId = getSessionWhatsAppId(empresaId);
+
   for (const contato of contatos) {
     const numero = formatarNumero(contato.whatsapp);
-    await sendWhatsAppMessage(empresaId, numero, mensagem);
-    console.log(`[Notificação] Enviado para ${contato.nome} (${contato.tipo}): ${mensagem.substring(0, 60)}...`);
+    if (!numero) {
+      console.log(`[Notificação] Ignorado contato inválido: ${contato.nome} (${contato.whatsapp})`);
+      continue;
+    }
+    if (selfId && selfId === numero) {
+      console.log(`[Notificação] Ignorado próprio número da sessão para ${contato.nome}`);
+      continue;
+    }
+    const enviado = await sendWhatsAppMessage(empresaId, numero, mensagem);
+    if (enviado) {
+      console.log(`[Notificação] Enviado para ${contato.nome} (${contato.tipo}): ${mensagem.substring(0, 60)}...`);
+    } else {
+      console.log(`[Notificação] Falha ao enviar para ${contato.nome} (${contato.tipo}): ${numero}`);
+    }
   }
 }
 
@@ -79,14 +222,19 @@ export function templateNovoPedido(dados: {
   clienteNome: string;
   itens: string;
   valor: number;
+  taxaEntrega?: number;
   endereco: string;
   pedidoId: number;
 }): string {
-  const valor = (dados.valor / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const subtotal = (dados.valor / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const taxaEntrega = dados.taxaEntrega ? (dados.taxaEntrega / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : null;
+  const total = ((dados.valor + (dados.taxaEntrega || 0)) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   let msg = `🛒 *Novo Pedido #${dados.pedidoId}!*\n\n`;
   msg += `👤 Cliente: ${dados.clienteNome}\n`;
   msg += `📦 Itens: ${dados.itens}\n`;
-  msg += `💰 Total: ${valor}\n`;
+  msg += `💰 Subtotal: ${subtotal}\n`;
+  if (taxaEntrega) msg += `🚚 Taxa de entrega: ${taxaEntrega}\n`;
+  msg += `🔢 Total: ${total}\n`;
   msg += `📍 Endereço: ${dados.endereco}\n`;
   msg += `\n_Pedido recebido pelo bot WhatsApp_`;
   return msg;
@@ -125,14 +273,16 @@ export function templateNovoCliente(dados: {
 
 
 // ── Notifica especificamente o entregador ─────────────────────
-export async function notificarEntregador(empresaId: number, mensagem: string): Promise<void> {
+export async function notificarEntregador(empresaId: number, mensagem: string, pedidoId?: number): Promise<void> {
   const db = getDb();
   const rows = await db.execute(`
     SELECT id, nome, whatsapp, tipo, eventos
     FROM contatos_notificacao
     WHERE empresa_id = ${empresaId}
     AND ativo = true
-    AND tipo = 'entregador'
+    AND LOWER(TRIM(tipo)) = 'entregador'
+    AND whatsapp IS NOT NULL
+    AND whatsapp <> ''
   `) as unknown[];
 
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -140,10 +290,34 @@ export async function notificarEntregador(empresaId: number, mensagem: string): 
     return;
   }
 
+  const selfId = getSessionWhatsAppId(empresaId);
+
   for (const contato of rows as ContatoNotificacao[]) {
     const numero = formatarNumero(contato.whatsapp);
-    await sendWhatsAppMessage(empresaId, numero, mensagem);
-    console.log(`[Entregador] ✅ Notificado: ${contato.nome} (${numero})`);
+    if (!numero) {
+      console.log(`[Entregador] Ignorado contato com número inválido: ${contato.nome}`);
+      continue;
+    }
+    if (selfId && selfId === numero) {
+      console.log(`[Entregador] Ignorado próprio número da sessão para ${contato.nome}`);
+      continue;
+    }
+    const enviado = await sendWhatsAppMessage(empresaId, numero, mensagem);
+    if (enviado) {
+      console.log(`[Entregador] ✅ Notificado: ${contato.nome} (${numero})`);
+
+      // Registra a notificação se pedidoId foi fornecido
+      if (pedidoId) {
+        await db.insert(entregasNotificadas).values({
+          pedidoId,
+          entregadorWhatsapp: contato.whatsapp.replace(/[^0-9]/g, ""),
+          notificadoEm: new Date(),
+          respostaRecebida: false,
+        });
+      }
+    } else {
+      console.log(`[Entregador] ❌ Falha ao notificar: ${contato.nome} (${numero})`);
+    }
   }
 }
 

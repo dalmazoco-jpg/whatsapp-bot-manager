@@ -49,5 +49,18 @@ export async function transcribeGroqAudio(audioBuffer: Buffer, mimeType = "audio
   const result = await response.json() as { text?: string };
   const text = result.text?.trim();
   if (!text) throw new Error("Groq Speech-to-Text não retornou transcrição");
-  return text;
+
+  // Limpa caracteres estranhos e tags indesejadas da transcrição
+  let cleanedText = text
+    .replace(/<function=\w+>{[^}]*}<\/function>/gi, '') // Remove tags de função
+    .replace(/<[^>]*>/g, '') // Remove outras tags HTML/XML
+    .replace(/[^\w\s.,!?áéíóúâêôãõçÁÉÍÓÚÂÊÔÃÕÇ]/g, '') // Remove caracteres especiais estranhos
+    .replace(/\s+/g, ' ') // Normaliza espaços
+    .trim();
+
+  if (!cleanedText) {
+    throw new Error("Transcrição ficou vazia após limpeza");
+  }
+
+  return cleanedText;
 }

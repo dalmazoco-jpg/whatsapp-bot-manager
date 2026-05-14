@@ -464,14 +464,15 @@ export const pedidosRouter = router({
           const itens = Array.isArray((pedido as any)?.itens)
             ? (pedido as any).itens.map((i: any) => `${i.qtd}x ${i.nome}`).join(", ")
             : "Itens do pedido";
-          const valor = pedido?.valorTotal
-            ? (pedido.valorTotal / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+          const totalPedido = ((pedido?.valorTotal || 0) + (pedido?.taxaEntrega || 0));
+          const valor = totalPedido
+            ? (totalPedido / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
             : "—";
 
           const msgEntregador = input.status === "em_preparo"
             ? templatePedidoEmPreparacao({ clienteNome, endereco, pedidoId: id, itens, valor })
             : templateEntregaSaindo({ clienteNome, endereco, pedidoId: id, itens, valor });
-          notificarEntregador(empresaId, msgEntregador).catch(console.error);
+          notificarEntregador(empresaId, msgEntregador, id).catch(console.error);
 
           // Também notifica proprietário
           const statusMsg = input.status === "em_preparo" ? "entrou em preparação" : "saiu para entrega";
@@ -481,31 +482,23 @@ export const pedidosRouter = router({
             try {
               const deliveryPayload = buildDeliveryPayload({ empresa, pedido, cliente });
               const delivery = await sendDeliveryWebhook(deliveryPayload);
-              await db
-                .update(pedidos)
-                .set({ deliveryMetadata: delivery, updatedAt: new Date() })
-                .where(and(eq(pedidos.id, id), eq(pedidos.empresaId, empresaId)));
 
-              if (delivery.trackingUrl && cliente?.whatsappNumber) {
-                await sendWhatsAppMessage(
-                  empresaId,
-                  cliente.whatsappNumber,
-                  `Seu pedido #${id} saiu para entrega. Acompanhe em tempo real: ${delivery.trackingUrl}`
-                );
+              if (delivery) {
+                // Webhook enviado com sucesso
+                if (delivery.trackingUrl && cliente?.whatsappNumber) {
+                  await sendWhatsAppMessage(
+                    empresaId,
+                    cliente.whatsappNumber,
+                    `Seu pedido #${id} saiu para entrega. Acompanhe em tempo real: ${delivery.trackingUrl}`
+                  );
+                }
+              } else {
+                // Webhook não configurado ou falhou silenciosamente
+                console.log(`[DeliveryWebhook] Webhook não enviado para pedido #${id} (não configurado)`);
               }
             } catch (deliveryError) {
               console.error("[DeliveryWebhook] Erro ao enviar entrega:", deliveryError);
-              await db
-                .update(pedidos)
-                .set({
-                  deliveryMetadata: {
-                    status: "erro",
-                    error: deliveryError instanceof Error ? deliveryError.message : String(deliveryError),
-                    updatedAt: new Date().toISOString(),
-                  },
-                  updatedAt: new Date(),
-                })
-                .where(and(eq(pedidos.id, id), eq(pedidos.empresaId, empresaId)));
+              // Log erro mas não trava o fluxo
             }
           }
         } catch (err) {
@@ -529,11 +522,12 @@ export const pedidosRouter = router({
       const itens = Array.isArray((pedido as any)?.itens)
         ? (pedido as any).itens.map((i: any) => `${i.qtd}x ${i.nome}`).join(", ")
         : "Ver pedido no sistema";
-      const valor = pedido.valorTotal
-        ? (pedido.valorTotal / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+      const totalPedido = ((pedido.valorTotal || 0) + (pedido.taxaEntrega || 0));
+      const valor = totalPedido
+        ? (totalPedido / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
         : "—";
       const msg = templateEntregaSaindo({ clienteNome, endereco, pedidoId: input.pedidoId, itens, valor });
-      await notificarEntregador(empresaId, msg);
+      await notificarEntregador(empresaId, msg, input.pedidoId);
       return { success: true };
     }),
 });

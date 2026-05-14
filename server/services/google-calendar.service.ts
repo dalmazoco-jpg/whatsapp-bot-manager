@@ -312,6 +312,44 @@ export async function buscarHorariosLivres(
   }
 }
 
+export async function listarEventosProximos(
+  empresaId: number,
+  maxResults: number = 8,
+  dias: number = 7,
+  startDate?: Date,
+  endDate?: Date
+): Promise<Array<{ id: string; titulo: string; inicio: string; fim: string; local?: string; link?: string }>> {
+  const auth = await getAuthenticatedClient(empresaId);
+  if (!auth) return [];
+
+  const calendar = google.calendar({ version: "v3", auth: auth.oauth2 });
+  const timeMin = startDate || new Date();
+  const timeMax = endDate || new Date(timeMin.getTime() + dias * 24 * 60 * 60 * 1000);
+
+  try {
+    const response = await calendar.events.list({
+      calendarId: auth.calendarId,
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
+      maxResults,
+      singleEvents: true,
+      orderBy: "startTime",
+    });
+
+    return (response.data.items || []).map((event) => ({
+      id: event.id || "",
+      titulo: event.summary || "Sem título",
+      inicio: event.start?.dateTime || event.start?.date || "",
+      fim: event.end?.dateTime || event.end?.date || "",
+      local: event.location || undefined,
+      link: event.htmlLink || undefined,
+    }));
+  } catch (err) {
+    console.error("[GoogleCalendar] Erro ao listar eventos:", err);
+    return [];
+  }
+}
+
 // ── Cria evento no Google Calendar ───────────────────────────
 export async function criarEvento(
   empresaId: number,

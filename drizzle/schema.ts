@@ -163,7 +163,6 @@ export const pedidos = pgTable("pedidos", {
   dataPagamento: timestamp("data_pagamento"),
   enderecoEntrega: text("endereco_entrega"),
   observacoes: text("observacoes"),
-  deliveryMetadata: jsonb("delivery_metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -269,13 +268,26 @@ export const contatosNotificacao = pgTable("contatos_notificacao", {
   empresaId: integer("empresa_id").notNull().references(() => empresas.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   whatsapp: text("whatsapp").notNull(),
-  tipo: text("tipo").default("proprietario").notNull(), // 'proprietario', 'gerente', 'atendente'
-  eventos: text("eventos").array().notNull(), // ['agendamento', 'pedido', 'cancelamento', 'novo_cliente']
+  tipo: text("tipo").default("proprietario").notNull(), // 'proprietario', 'gerente', 'atendente', 'entregador'
+  eventos: text("eventos").array().notNull(), // ['agendamento', 'pedido', 'cancelamento', 'novo_cliente', 'entrega']
   ativo: boolean("ativo").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type ContatoNotificacao = typeof contatosNotificacao.$inferSelect;
 export type InsertContatoNotificacao = typeof contatosNotificacao.$inferInsert;
+
+export const entregasNotificadas = pgTable("entregas_notificadas", {
+  id: serial("id").primaryKey(),
+  pedidoId: integer("pedido_id").notNull().references(() => pedidos.id, { onDelete: "cascade" }),
+  entregadorWhatsapp: text("entregador_whatsapp").notNull(),
+  notificadoEm: timestamp("notificado_em").defaultNow().notNull(),
+  respostaRecebida: boolean("resposta_recebida").default(false).notNull(),
+  respostaTipo: text("resposta_tipo"), // 'aceitou', 'rejeitou', null
+  respostaEm: timestamp("resposta_em"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type EntregaNotificada = typeof entregasNotificadas.$inferSelect;
+export type InsertEntregaNotificada = typeof entregasNotificadas.$inferInsert;
 
 export const googleCalendarTokens = pgTable("google_calendar_tokens", {
   id: serial("id").primaryKey(),

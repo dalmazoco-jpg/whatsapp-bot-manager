@@ -16,9 +16,7 @@ function toReais(centavos: number) {
 }
 
 function pickPaymentMethod(pedido: Pedido): DeliveryPaymentMethod {
-  const metadata = ((pedido.deliveryMetadata as Record<string, unknown>) || {}) as Record<string, unknown>;
-  const deliveryPaymentBy = String(metadata.deliveryPaymentBy || "").toLowerCase();
-  if (deliveryPaymentBy === "empresa" || deliveryPaymentBy === "company") return "company";
+  // Por padrão, usa cash. Em futuro, pode consultar config da empresa
   return "cash";
 }
 
@@ -45,8 +43,9 @@ export function buildDeliveryPayload(params: {
 }
 
 export async function sendDeliveryWebhook(payload: DeliveryWebhookPayload) {
-  if (!ENV.deliveryWebhookApiKey) {
-    throw new Error("DELIVERY_WEBHOOK_API_KEY não configurada no servidor");
+  if (!ENV.deliveryWebhookApiKey || ENV.deliveryWebhookApiKey.trim() === "") {
+    console.log("[DeliveryWebhook] API key não configurada, pulando envio para app de entrega");
+    return null; // Retorna null para indicar que não foi enviado
   }
 
   const response = await fetch(ENV.deliveryWebhookUrl, {

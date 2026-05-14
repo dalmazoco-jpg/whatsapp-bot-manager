@@ -1,5 +1,6 @@
 import {
   Calendar,
+  CreditCard,
   LayoutDashboard,
   Package,
   Settings,
@@ -21,7 +22,8 @@ export const APP_MODULES = [
   { id: "apresentacao", label: "Apresentação", path: "/dashboard/apresentacao", icon: Package, required: false },
   { id: "clientes", label: "Clientes", path: "/clientes", icon: Users, required: false },
   { id: "pedidos", label: "Pedidos", path: "/pedidos", icon: ShoppingBag, required: false },
-  { id: "agendamentos", label: "Agendamentos", path: "/agendamentos", icon: Calendar, required: false },
+  { id: "agendamentos", label: "Google Calendar", path: "/google-calendar", icon: Calendar, required: false },
+  { id: "pagamentos", label: "Pagamentos", path: "/pagamentos", icon: CreditCard, required: false },
   { id: "financeiro", label: "Financeiro", path: "/financeiro", icon: TrendingUp, required: false },
   { id: "configuracoes", label: "Configurações", path: "/configuracoes", icon: Settings, required: true },
 ] as const;

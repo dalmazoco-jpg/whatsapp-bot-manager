@@ -208,6 +208,19 @@ export async function ensureIntegrationTables() {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS entregas_notificadas (
+      id serial PRIMARY KEY,
+      pedido_id integer NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+      entregador_whatsapp text NOT NULL,
+      notificado_em timestamp NOT NULL DEFAULT now(),
+      resposta_recebida boolean NOT NULL DEFAULT false,
+      resposta_tipo text,
+      resposta_em timestamp,
+      created_at timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
   await db.execute(`ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS delivery_metadata jsonb`);
 
   await db

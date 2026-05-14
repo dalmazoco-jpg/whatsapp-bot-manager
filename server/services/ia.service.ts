@@ -6,7 +6,7 @@ import {
 } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { verificarDisponibilidade, buscarHorariosLivres, criarEvento, temGoogleCalendar } from "./google-calendar.service";
-import { notificarContatos, templateNovoAgendamento, templateNovoPedido } from "./notificacoes.service";
+import { notificarContatos, templateNovoAgendamento, templateNovoPedido, isEntregador, processarRespostaEntregador } from "./notificacoes.service";
 
 // ── Ferramentas da IA ────────────────────────────────────────
 const IA_TOOLS: Tool[] = [
@@ -237,16 +237,18 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
         prompt += `- ${diasSemana[h.diaSemana]}: ${h.horaInicio} às ${h.horaFim}\n`;
       }
       prompt += "\n";
+      prompt += "IMPORTANTE: use estes horários como janela padrão para agendamentos e atendimento.\n";
+      prompt += "- Se o cliente pedir agendamento fora dessa janela, informe os horários de atendimento e ofereça outra data/hora dentro dessa janela.\n";
+      prompt += "- Não paralise o atendimento se o cliente não quiser informar o horário de funcionamento. Pergunte apenas se ele já tem dia ou hora preferidos.\n";
+      prompt += "- Se não houver horário de funcionamento informado pelo cliente, siga com a conversa e proponha opções à vista.\n\n";
     }
+  } else {
+    prompt += "Não há horários de atendimento cadastrados. Ainda assim, você pode perguntar o dia/hora de preferência e sugerir a próxima opção disponível.\n\n";
   }
 
   // Google Calendar
   if (temCalendar) {
-    prompt += `AGENDA (GOOGLE CALENDAR INTEGRADO):
-- Você tem acesso à agenda real do estabelecimento
-- SEMPRE use verificar_disponibilidade_agenda ANTES de confirmar qualquer horário
-- Se ocupado, use buscar_horarios_livres para sugerir alternativas
-- Só use agendar_compromisso após o cliente confirmar o horário disponível\n\n`;
+    prompt += `AGENDA (GOOGLE CALENDAR INTEGRADO):\n- Você tem acesso à agenda real do estabelecimento\n- SEMPRE use verificar_disponibilidade_agenda ANTES de confirmar qualquer horário\n- Se ocupado, use buscar_horarios_livres para sugerir alternativas\n- Só use agendar_compromisso após o cliente confirmar o horário disponível\n\n`;
   }
 
   prompt += `ESTRATÉGIA DE ATENDIMENTO:
@@ -258,6 +260,12 @@ async function buildSystemPrompt(empresaId: number, clienteNome: string, prefere
 
   prompt += `REGRAS DE PAGAMENTO PIX:
 - Quando o cliente pedir forma de pagamento, orçamento, sinal, entrada ou fechamento, use exclusivamente os dados Pix cadastrados da empresa atual (empresa_id ${empresaId}, "${empresa.nome}").
+- Ao apresentar opções de pagamento, sempre inicie por:
+  1) Pix
+  2) Dinheiro
+  3) Cartão
+- Se o pedido for para entrega, informe que a taxa de entrega é de R$ 8,00 e inclua esse valor no total final.
+- Se o pedido for retirada no local, não some taxa de entrega.
 - Nunca invente chave Pix, banco, nome do recebedor, cidade, QR Code, Pix Copia e Cola ou valor.
 - Sempre confirme nome do recebedor, valor e descrição do pagamento.
 - Se existir Pix Copia e Cola cadastrado, envie o Pix Copia e Cola em texto.
@@ -463,19 +471,21 @@ async function executeFunctionCall(empresaId: number, clienteId: number, cliente
         const itens = args.itens as Array<{ nome: string; qtd: number; observacao?: string }>;
         const itensStr = itens.map(i => `${i.qtd}x ${i.nome}`).join(", ");
 
+        const endereco = (args.endereco as string) || "";
+        const taxaEntrega = endereco.trim().length > 0 ? 800 : 0;
         const [pedidoCriado] = await db.insert(pedidos).values({
           empresaId, clienteId,
           itens,
           valorTotal: (args.valor_total_centavos as number) || 0,
-          taxaEntrega: 500,
+          taxaEntrega,
           status: "recebido",
-          enderecoEntrega: args.endereco as string,
+          enderecoEntrega: endereco,
           observacoes: (args.observacoes as string) || null,
         } as InsertPedido).returning();
 
         // Notifica proprietário
         notificarContatos(empresaId, "pedido",
-          templateNovoPedido({ clienteNome, itens: itensStr, valor: (args.valor_total_centavos as number) || 0, endereco: args.endereco as string, pedidoId: pedidoCriado.id })
+          templateNovoPedido({ clienteNome, itens: itensStr, valor: (args.valor_total_centavos as number) || 0, taxaEntrega, endereco, pedidoId: pedidoCriado.id })
         ).catch(console.error);
 
         return JSON.stringify({ success: true, pedido_id: pedidoCriado.id, mensagem: "Pedido criado com sucesso!" });
@@ -511,6 +521,16 @@ export async function handleIncomingMessage(
   console.log(`[IA] Empresa ${empresaId} | ${whatsappNumber} | Msg: ${text}`);
 
   try {
+    // Verifica se é resposta de entregador
+    const ehEntregador = await isEntregador(empresaId, whatsappNumber);
+    if (ehEntregador) {
+      const resultado = await processarRespostaEntregador(empresaId, whatsappNumber, text);
+      if (resultado.processado) {
+        console.log(`[Entregador] Resposta processada: ${whatsappNumber} - ${resultado.mensagem}`);
+        return resultado.mensagem || "Resposta registrada.";
+      }
+    }
+
     const cliente = await getOrCreateCliente(empresaId, whatsappNumber, senderName);
 
     // Atualiza última interação

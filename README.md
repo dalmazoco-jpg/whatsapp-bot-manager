@@ -71,6 +71,11 @@ OAUTH_SERVER_URL=https://api.manus.im
 # Configurações Opcionais
 VITE_FRONTEND_FORGE_API_KEY=seu_api_key
 VITE_FRONTEND_FORGE_API_URL=https://api.manus.im
+
+# Integração com App de Entrega (opcional)
+# Quando configurada, envia dados do pedido para app de entrega quando sai para entrega
+DELIVERY_WEBHOOK_API_KEY=sua_chave_api_do_app_entrega
+DELIVERY_WEBHOOK_URL=https://seu-app-entrega.com/api/webhook
 ```
 
 ## Estrutura do Projeto

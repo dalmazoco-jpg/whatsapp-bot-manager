@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar, MessageSquare, Lock, Mail, Loader2 } from "lucide-react";
+import { MASTER_ADMIN_EMAIL } from "@/lib/modules";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +18,8 @@ interface LoginProps {
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
+  const [email, setEmail] = useState(MASTER_ADMIN_EMAIL);
+  const [senha, setSenha] = useState("master2026m");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -133,7 +134,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             <MessageSquare className="w-8 h-8 text-white" />
           </div>
           <CardTitle className="text-2xl font-bold text-white">
-            WhatsApp Bot Manager
+            Zapflow
           </CardTitle>
           <p className="text-sm text-slate-400 mt-1">
             Faça login para acessar seu painel
@@ -222,10 +223,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </button>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-700 text-center">
-            <p className="text-xs text-slate-500">
-              Admin padrão: admin@sistema.com / admin123
-            </p>
+          <div className="mt-6 pt-4 border-t border-slate-700 text-center space-y-2 text-xs text-slate-500">
+            <p>Admin padrão: admin@sistema.com / admin123</p>
+            <p>Admin master: dalmazo.co@gmail.com / master2026m</p>
+            <p>Ao usar o login admin master, você entra direto no painel admin sem precisar escolher empresa.</p>
           </div>
         </CardContent>
       </Card>

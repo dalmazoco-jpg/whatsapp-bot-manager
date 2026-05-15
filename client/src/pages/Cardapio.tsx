@@ -198,8 +198,8 @@ export default function Cardapio() {
           priceInCents: item.preco,
           description: item.descricao || undefined,
           quantity: 1,
-          successUrl: window.location.origin + '/?payment=success',
-          cancelUrl: window.location.origin + '/?payment=cancel',
+          successUrl: `${window.location.origin}/pagamento/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${window.location.origin}/pagamento/cancelado`,
         }),
       });
 
@@ -494,6 +494,9 @@ export default function Cardapio() {
               <p className="typography-body text-muted-foreground">
                 {catalogDescription}
               </p>
+              <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-foreground">
+                <strong>Importante:</strong> cadastre seus itens aqui para que o CRM e a IA possam vender automaticamente. Cada item pode ser cobrado via Stripe sem precisar cadastrar produtos manualmente na plataforma.
+              </div>
             </div>
 
             <div className="flex gap-3 flex-wrap justify-end">

@@ -45,6 +45,7 @@ export default function Pagamentos() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [stripeConfig, setStripeConfig] = useState<{ publishableKey?: string; webhookConfigured: boolean } | null>(null);
 
   const token = localStorage.getItem("auth_token") || "";
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -78,6 +79,12 @@ export default function Pagamentos() {
 
   useEffect(() => {
     loadStripeData();
+    fetch("/api/stripe/config", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setStripeConfig(data))
+      .catch((err) => {
+        console.error("Erro ao carregar config Stripe:", err);
+      });
   }, []);
 
   // Criar sessão de checkout
@@ -87,7 +94,11 @@ export default function Pagamentos() {
       const endpoint = isSubscription ? "/api/stripe/create-subscription-checkout" : "/api/stripe/create-checkout-session";
       const response = await apiFetch(endpoint, {
         method: "POST",
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({
+          priceId,
+          successUrl: `${window.location.origin}/pagamento/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${window.location.origin}/pagamento/cancelado`,
+        }),
       });
 
       const data = await response.json();
@@ -197,9 +208,11 @@ export default function Pagamentos() {
                 <Card className="border border-border">
                   <CardContent className="py-16 text-center">
                     <ShoppingCart className="w-14 h-14 mx-auto mb-4 text-muted-foreground/30" />
-                    <p className="text-muted-foreground">Nenhum produto configurado no Stripe</p>
+                    <p className="text-muted-foreground">Nenhum produto Stripe encontrado</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Configure produtos e preços no painel do Stripe
+                      {stripeConfig?.publishableKey
+                        ? "Stripe está conectado e as vendas podem ser feitas a partir do Cardápio. Cadastre itens e use o botão Pagar para criar checkout dinâmico."
+                        : "Configurar Stripe é necessário para pagamentos. Verifique a chave pública e webhook no painel de configurações."}
                     </p>
                   </CardContent>
                 </Card>
@@ -267,26 +280,26 @@ export default function Pagamentos() {
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <p>
                   <strong>Status:</strong>{" "}
-                  {process.env.NODE_ENV === 'development' ? (
-                    <span className="text-green-600">Modo de teste (testes)</span>
-                  ) : (
-                    <span className="text-blue-600">Modo produção</span>
-                  )}
+                  <span className="text-blue-600">{stripeConfig ? "Stripe conectado" : "Verificando..."}</span>
                 </p>
                 <p>
                   <strong>Chave pública:</strong>{" "}
-                  {process.env.VITE_STRIPE_PUBLISHABLE_KEY ? (
+                  {stripeConfig?.publishableKey ? (
                     <span className="text-green-600">Configurada</span>
-                  ) : (
+                  ) : stripeConfig ? (
                     <span className="text-red-600">Não configurada</span>
+                  ) : (
+                    <span className="text-muted-foreground">Carregando...</span>
                   )}
                 </p>
                 <p>
                   <strong>Webhook:</strong>{" "}
-                  {process.env.STRIPE_WEBHOOK_SECRET ? (
+                  {stripeConfig?.webhookConfigured ? (
                     <span className="text-green-600">Configurado</span>
-                  ) : (
+                  ) : stripeConfig ? (
                     <span className="text-red-600">Não configurado</span>
+                  ) : (
+                    <span className="text-muted-foreground">Carregando...</span>
                   )}
                 </p>
                 <div className="mt-4 p-3 bg-yellow-500/10 rounded-lg text-yellow-800 text-xs">

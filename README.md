@@ -1,4 +1,4 @@
-# WhatsApp Bot Manager
+# Zapflow
 
 Um painel administrativo completo e profissional para gerenciar chatbots inteligentes no WhatsApp. Controle total sobre clientes, pedidos, agendamentos e métricas em tempo real.
 

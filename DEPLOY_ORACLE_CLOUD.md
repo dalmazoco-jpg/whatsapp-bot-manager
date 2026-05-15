@@ -77,7 +77,7 @@ BUILT_IN_FORGE_API_URL=https://api.manus.im
 BUILT_IN_FORGE_API_KEY=sua_chave
 VITE_FRONTEND_FORGE_API_URL=https://api.manus.im
 VITE_FRONTEND_FORGE_API_KEY=sua_chave_frontend
-VITE_APP_TITLE=WhatsApp Bot Manager
+VITE_APP_TITLE=Zapflow
 NODE_ENV=production
 PORT=3000
 ```

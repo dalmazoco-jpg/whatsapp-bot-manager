@@ -40,6 +40,7 @@ export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState("");
   const formRef = useRef<HTMLDivElement | null>(null);
   const [clienteForm, setClienteForm] = useState({ nome: "", whatsappNumber: "", endereco: "" });
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<number | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [empresaForm, setEmpresaForm] = useState({
     nome: "",
@@ -85,11 +86,22 @@ export default function Clientes() {
       return;
     }
     try {
-      const cliente = await criarClienteFinal.mutateAsync({
+      const payload: any = {
         nome: clienteForm.nome,
         whatsappNumber: clienteForm.whatsappNumber,
         endereco: clienteForm.endereco || undefined,
-      });
+      };
+      if (isMasterAdmin) {
+        if (!selectedEmpresaId) {
+          const text = "Selecione a empresa destino.";
+          setStatusMessage({ type: "error", text });
+          toast.error(text);
+          return;
+        }
+        payload.empresaId = selectedEmpresaId;
+      }
+
+      const cliente = await criarClienteFinal.mutateAsync(payload);
       await refetch();
       const text = `Cliente ${cliente.nome} salvo.`;
       setClienteForm({ nome: "", whatsappNumber: "", endereco: "" });
@@ -196,6 +208,31 @@ export default function Clientes() {
                     {empresaSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                     Criar Cliente
                   </Button>
+
+                  {/* --- Criar cliente final para empresa existente (master admin) --- */}
+                  <div className="mt-6 p-4 border rounded-md bg-background">
+                    <h4 className="font-semibold mb-3">Cadastrar cliente final para uma empresa</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                      <select
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                        value={selectedEmpresaId ?? ""}
+                        onChange={(e) => setSelectedEmpresaId(e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">Selecione a empresa</option>
+                        {empresasArray.map((emp) => (
+                          <option key={emp.id} value={emp.id}>{emp.nome}</option>
+                        ))}
+                      </select>
+                      <Input placeholder="Nome do cliente" value={clienteForm.nome} onChange={(e) => setClienteForm({ ...clienteForm, nome: e.target.value })} />
+                      <Input placeholder="WhatsApp" value={clienteForm.whatsappNumber} onChange={(e) => setClienteForm({ ...clienteForm, whatsappNumber: e.target.value })} />
+                    </div>
+                    <div className="flex gap-3">
+                      <Button onClick={handleCreateClienteFinal} disabled={clienteSaving} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                        {clienteSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Cadastrar cliente para empresa
+                      </Button>
+                    </div>
+                  </div>
                 </>
               ) : (
                 <>

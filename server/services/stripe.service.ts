@@ -290,3 +290,63 @@ export async function createPaymentIntent(amount: number, currency = 'brl', meta
     throw error;
   }
 }
+
+// ── Checkout Dinâmico (sem pré-registrar produto no Stripe) ───────
+export interface DynamicCheckoutData {
+  productName: string;
+  priceInCents: number; // em centavos
+  description?: string;
+  quantity?: number;
+  customerEmail?: string;
+  metadata?: Record<string, string>;
+  successUrl?: string;
+  cancelUrl?: string;
+}
+
+export async function createDynamicCheckoutSession(data: DynamicCheckoutData) {
+  try {
+    // 1. Cria produto dinâmico no Stripe
+    const product = await stripe.products.create({
+      name: data.productName,
+      description: data.description || undefined,
+      metadata: {
+        dynamic: 'true',
+        created_at: new Date().toISOString(),
+        ...data.metadata,
+      },
+    });
+
+    // 2. Cria preço para esse produto
+    const price = await stripe.prices.create({
+      product: product.id,
+      unit_amount: data.priceInCents,
+      currency: 'brl',
+      metadata: { dynamic: 'true' },
+    });
+
+    // 3. Cria sessão de checkout com o preço dinâmico
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: price.id,
+          quantity: data.quantity || 1,
+        },
+      ],
+      customer_email: data.customerEmail,
+      metadata: {
+        productId: product.id,
+        priceId: price.id,
+        ...data.metadata,
+      },
+      mode: 'payment',
+      success_url: data.successUrl || `${process.env.VITE_APP_URL || 'http://localhost:5173'}/pagamento/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: data.cancelUrl || `${process.env.VITE_APP_URL || 'http://localhost:5173'}/pagamento/cancelado`,
+    });
+
+    return session;
+  } catch (error) {
+    console.error('[Stripe] Erro ao criar checkout dinâmico:', error);
+    throw error;
+  }
+}

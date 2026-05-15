@@ -12,6 +12,7 @@ import {
   getSubscriptions,
   cancelSubscription,
   getPaymentIntents,
+  createDynamicCheckoutSession,
 } from "../services/stripe.service";
 import { getDb } from "../db";
 
@@ -48,6 +49,34 @@ export function registerStripeRoutes(app: Express) {
     } catch (error) {
       console.error("[Stripe] Erro ao criar checkout session:", error);
       return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+
+  // POST /api/stripe/create-dynamic-checkout — criar checkout dinâmico (sem pré-registrar produto)
+  app.post("/api/stripe/create-dynamic-checkout", async (req: Request, res: Response) => {
+    const { payload, empresaId } = getEmpresaIdFromRequest(req);
+    if (!payload || empresaId == null) return res.status(401).json({ error: "Não autenticado" });
+
+    const { productName, priceInCents, description, quantity, successUrl, cancelUrl } = req.body;
+    if (!productName || !priceInCents) {
+      return res.status(400).json({ error: "productName e priceInCents são obrigatórios" });
+    }
+
+    try {
+      const session = await createDynamicCheckoutSession({
+        productName,
+        priceInCents,
+        description,
+        quantity,
+        customerEmail: payload.email,
+        metadata: { empresaId: String(empresaId) },
+        successUrl,
+        cancelUrl,
+      });
+      return res.json({ sessionId: session.id, url: session.url });
+    } catch (error) {
+      console.error("[Stripe] Erro ao criar checkout dinâmico:", error);
+      return res.status(500).json({ error: error instanceof Error ? error.message : "Erro interno do servidor" });
     }
   });
 

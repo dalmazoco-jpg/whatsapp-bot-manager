@@ -30,6 +30,7 @@ import {
   upsertApresentacaoConfig,
   updatePlatformSettings,
 } from "./db";
+import { createCustomer } from "./services/stripe.service";
 import {
   empresas,
   usuarios,
@@ -261,7 +262,18 @@ export const adminRouter = router({
         empresaId: novaEmpresa.id,
       });
 
-      return novaEmpresa;
+      // Tenta criar cliente no Stripe automaticamente (se configurado)
+      try {
+        const customer = await createCustomer({ email: input.emailUsuario, name: input.nome });
+        // Atualiza configBot para armazenar stripeCustomerId
+        const updatedConfig = { ...(novaEmpresa.configBot || {}), modules, stripeCustomerId: customer.id };
+        await db.update(empresas).set({ configBot: updatedConfig, updatedAt: new Date() }).where(eq(empresas.id, novaEmpresa.id));
+        const refreshed = await getEmpresaById(novaEmpresa.id);
+        return refreshed;
+      } catch (err) {
+        console.error('[Stripe] erro ao criar customer automatico:', err);
+        return novaEmpresa;
+      }
     }),
 
   // Ativar/desativar licença
@@ -381,15 +393,18 @@ export const clientesRouter = router({
         whatsappNumber: z.string().min(8),
         endereco: z.string().optional(),
         preferencias: z.record(z.string(), z.any()).optional(),
+        empresaId: z.number().optional(), // permite admin especificar empresa alvo
       })
     )
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.empresaId) throw new Error("Selecione uma empresa para cadastrar cliente final");
+      // Permitir que admin global especifique empresaId no payload
+      const targetEmpresaId = ctx.user.role === 'admin' && input.empresaId ? input.empresaId : ctx.empresaId;
+      if (!targetEmpresaId) throw new Error("Selecione uma empresa para cadastrar cliente final");
       const db = getDb();
       const [cliente] = await db
         .insert(clientesWhatsapp)
         .values({
-          empresaId: ctx.empresaId,
+          empresaId: targetEmpresaId,
           nome: input.nome,
           whatsappNumber: input.whatsappNumber.replace(/\D/g, ""),
           endereco: input.endereco || null,

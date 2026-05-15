@@ -58,6 +58,7 @@ export default function Cardapio() {
   const [bulkText, setBulkText] = useState("");
   const [bulkLoading, setBulkLoading] = useState(false);
   const [itemSaving, setItemSaving] = useState(false);
+  const [buyLoadingId, setBuyLoadingId] = useState<number | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [previewProducts, setPreviewProducts] = useState<ProdutoPreview[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -182,6 +183,41 @@ export default function Cardapio() {
 
   const handleToggleDisponivel = async (id: number, current: boolean) => {
     await updateItem.mutateAsync({ id, disponivel: !current });
+  };
+
+  const handleBuy = async (item: { id: number; nome: string; descricao?: string; preco: number }) => {
+    if (!item || item.preco <= 0) return;
+    setBuyLoadingId(item.id);
+    try {
+      const res = await fetch('/api/stripe/create-dynamic-checkout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: item.nome,
+          priceInCents: item.preco,
+          description: item.descricao || undefined,
+          quantity: 1,
+          successUrl: window.location.origin + '/?payment=success',
+          cancelUrl: window.location.origin + '/?payment=cancel',
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Erro ao criar sessão de pagamento');
+
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+
+      throw new Error('Resposta inválida do servidor');
+    } catch (err) {
+      console.error('[Pagamento] erro:', err);
+      toast.error(err instanceof Error ? err.message : 'Erro ao iniciar pagamento');
+    } finally {
+      setBuyLoadingId(null);
+    }
   };
 
   const parseBulkText = (text: string) => {
@@ -740,6 +776,20 @@ h-4 text-red-500" />}
                                   className="text-red-500 hover:text-red-600"
                                 >
                                   <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                              <div className="ml-2">
+                                <Button
+                                  size="sm"
+                                  className="bg-blue-600 text-white hover:bg-blue-700"
+                                  onClick={() => handleBuy(item)}
+                                  disabled={!item.disponivel || buyLoadingId === item.id}
+                                >
+                                  {buyLoadingId === item.id ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : (
+                                    'Pagar'
+                                  )}
                                 </Button>
                               </div>
                             </div>
